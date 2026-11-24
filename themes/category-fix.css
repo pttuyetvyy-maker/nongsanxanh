@@ -1,0 +1,171 @@
+/* Bản vá riêng cho trang quản lý danh mục.
+   File này phải được nạp SAU styleadmin.css. */
+html body .shell a,
+html body .shell button,
+html body .shell input,
+html body .shell select,
+html body .shell textarea,
+html body .category-modal-overlay button,
+html body .category-modal-overlay input,
+html body .category-modal-overlay select,
+html body .category-modal-overlay textarea {
+    pointer-events: auto !important;
+    cursor: auto !important;
+}
+
+html body .shell button,
+html body .category-modal-overlay button {
+    cursor: pointer !important;
+}
+
+html body .shell a {
+    cursor: pointer !important;
+}
+
+.category-modal-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 10000;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    background: rgba(15, 35, 25, .48);
+    backdrop-filter: blur(3px);
+}
+
+.category-modal-overlay.is-open {
+    display: flex !important;
+}
+
+.category-modal {
+    width: min(540px, 100%);
+    max-height: calc(100vh - 40px);
+    overflow-y: auto;
+    background: #fff;
+    border-radius: 16px;
+    box-shadow: 0 24px 70px rgba(0,0,0,.22);
+    animation: categoryModalIn .18s ease-out;
+}
+
+@keyframes categoryModalIn {
+    from { opacity: 0; transform: translateY(10px) scale(.985); }
+    to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.category-modal-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    padding: 22px 24px 16px;
+    border-bottom: 1px solid #e8eee9;
+}
+
+.category-modal-head h2 {
+    margin: 0;
+    color: #18392b;
+    font-size: 20px;
+}
+
+.category-modal-head p {
+    margin: 6px 0 0;
+    color: #718078;
+    font-size: 12px;
+}
+
+.modal-x {
+    width: 34px;
+    height: 34px;
+    border: 0;
+    border-radius: 9px;
+    background: #f1f5f2;
+    color: #52645a;
+    font-size: 24px;
+    line-height: 1;
+}
+
+.category-modal-body {
+    display: grid;
+    gap: 15px;
+    padding: 20px 24px;
+}
+
+.form-field {
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+}
+
+.form-field label {
+    color: #263b30;
+    font-size: 13px;
+    font-weight: 700;
+}
+
+.form-field label span { color: #dc4b43; }
+
+.form-field input,
+.form-field textarea,
+.form-field select {
+    width: 100%;
+    min-height: 42px;
+    padding: 10px 12px;
+    border: 1px solid #d7e2da;
+    border-radius: 9px;
+    outline: none;
+    background: #fff;
+    color: #263b30;
+    font: inherit;
+    font-size: 13px;
+}
+
+.form-field textarea {
+    resize: vertical;
+    min-height: 82px;
+}
+
+.form-field input:focus,
+.form-field textarea:focus,
+.form-field select:focus {
+    border-color: #278455;
+    box-shadow: 0 0 0 3px rgba(39,132,85,.12);
+}
+
+.form-field small {
+    color: #829087;
+    font-size: 11px;
+}
+
+.category-modal-foot {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+    gap: 9px;
+    padding: 16px 24px 22px;
+    border-top: 1px solid #e8eee9;
+}
+
+.btn-danger-soft {
+    border: 1px solid #f2c4c0 !important;
+    background: #fff4f3 !important;
+    color: #b63830 !important;
+}
+
+.btn-danger-soft:hover { background: #ffe8e6 !important; }
+
+.category-modal-foot button:disabled {
+    opacity: .65;
+    cursor: wait !important;
+}
+
+body.modal-open { overflow: hidden; }
+
+@media (max-width: 700px) {
+    .category-modal-overlay { padding: 12px; }
+    .category-modal-head,
+    .category-modal-body,
+    .category-modal-foot { padding-left: 17px; padding-right: 17px; }
+    .category-modal-foot { justify-content: stretch; }
+    .category-modal-foot button { flex: 1; justify-content: center; }
+}

@@ -1,0 +1,164 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body.forgot-page {
+    font-family: Arial, Helvetica, sans-serif;
+    background: #edf5ed;
+    min-height: 100vh;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 25px;
+    color: #263b30;
+}
+
+/* Khung chính */
+.forgot-box {
+    width: 100%;
+    max-width: 1076px;
+    min-height: 550px;
+    display: flex;
+    background: #ffffff;
+    border-radius: 20px;
+    overflow: hidden;
+    box-shadow: 0 15px 40px rgba(35, 80, 45, 0.10);
+}
+
+/* Cột trái */
+.forgot-left {
+    width: 45%;
+    background: linear-gradient(145deg, #28763c, #337c3e);
+    color: white;
+    padding: 60px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+}
+
+.forgot-logo {
+    font-size: 25px;
+    font-weight: 700;
+    margin-bottom: 50px;
+}
+
+.forgot-left h1 {
+    font-size: 32px;
+    line-height: 1.3;
+    font-weight: 700;
+    margin-bottom: 16px;
+}
+
+.forgot-left p {
+    font-size: 16px;
+    line-height: 1.6;
+}
+
+/* Cột phải */
+.forgot-right {
+    width: 55%;
+    background: white;
+    padding: 50px 60px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+}
+
+.forgot-back-link {
+    display: inline-block;
+    color: #168443;
+    text-decoration: none;
+    font-size: 15px;
+    margin-bottom: 30px;
+}
+
+.forgot-back-link:hover {
+    color: #0d5f2e;
+}
+
+.forgot-right h2 {
+    font-size: 28px;
+    color: #183c2b;
+    margin-bottom: 10px;
+}
+
+.forgot-desc {
+    font-size: 14px;
+    color: #858585;
+    margin-bottom: 25px;
+}
+
+/* Thông báo lỗi màu đỏ */
+.forgot-alert-danger {
+    width: 100%;
+    background: #f8d7da;
+    border: 1px solid #f5c2c7;
+    color: #842029;
+    padding: 12px 15px;
+    border-radius: 8px;
+    font-size: 14px;
+    text-align: center;
+    margin-bottom: 20px;
+}
+
+/* Ô nhập liệu */
+.forgot-field {
+    width: 100%;
+    margin-bottom: 20px;
+}
+
+.forgot-field label {
+    display: block;
+    font-size: 14px;
+    font-weight: 600;
+    color: #263c30;
+    margin-bottom: 8px;
+}
+
+.forgot-field input {
+    width: 100%;
+    height: 48px;
+    border: 1px solid #d9e0da;
+    border-radius: 8px;
+    padding: 0 15px;
+    font-size: 15px;
+    color: #333;
+    outline: none;
+}
+
+.forgot-field input:focus {
+    border-color: #218b4b;
+    box-shadow: 0 0 0 3px rgba(33, 139, 75, 0.10);
+}
+
+/* Nút Submit */
+.forgot-submit-btn {
+    width: 100%;
+    height: 48px;
+    background: #218b4b;
+    color: white;
+    border: none;
+    border-radius: 8px;
+    font-size: 16px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: 0.2s;
+}
+
+.forgot-submit-btn:hover {
+    background: #176f39;
+}
+
+/* Responsive màn hình nhỏ */
+@media screen and (max-width: 768px) {
+    .forgot-box {
+        flex-direction: column;
+        max-width: 500px;
+    }
+    .forgot-left, .forgot-right {
+        width: 100%;
+        padding: 30px 25px;
+    }
+}

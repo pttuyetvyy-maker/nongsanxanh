@@ -1,0 +1,218 @@
+.ct-page {
+  padding-top: 40px;
+  padding-bottom: 60px;
+}
+
+.ct-breadcrumb {
+  color: #666666;
+  font-size: 14px;
+  margin-bottom: 24px;
+}
+.ct-breadcrumb a { color: #666666; text-decoration: none; }
+.ct-breadcrumb a:hover { color: #238b45; }
+.ct-breadcrumb i { margin: 0 6px; font-style: normal; }
+.ct-breadcrumb span { color: #203326; font-weight: bold; }
+
+/* Khối chính: ảnh trái, thông tin phải */
+.ct-main {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 48px;
+  align-items: start;
+}
+
+.ct-image {
+  background: #f5f9f4;
+  border: 1px solid #e7eee5;
+  border-radius: 16px;
+  overflow: hidden;
+  aspect-ratio: 1 / 1;
+}
+.ct-image img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.ct-image-empty {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 96px;
+}
+
+.ct-tag {
+  display: inline-block;
+  background: #e8f5e9;
+  color: #238b45;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 5px 14px;
+  border-radius: 20px;
+  margin-bottom: 12px;
+}
+.ct-info h1 {
+  margin: 0 0 12px;
+  font-size: 34px;
+  color: #203326;
+}
+.ct-price {
+  margin: 0 0 12px;
+  font-size: 30px;
+  font-weight: 700;
+  color: #238b45;
+}
+.ct-price small {
+  font-size: 15px;
+  font-weight: 400;
+  color: #777777;
+}
+
+.ct-stock {
+  display: inline-block;
+  margin: 0 0 18px;
+  padding: 5px 14px;
+  border-radius: 20px;
+  font-size: 13px;
+  font-weight: 600;
+}
+.ct-stock.ok  { background: #e8f5e9; color: #238b45; }
+.ct-stock.out { background: #fdecea; color: #c0392b; }
+
+.ct-sub {
+  margin: 0 0 8px;
+  font-size: 17px;
+  color: #203326;
+}
+.ct-desc {
+  margin: 0 0 24px;
+  color: #555555;
+  line-height: 1.7;
+}
+
+/* Form mua hàng */
+.ct-buy {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 14px;
+  margin-bottom: 22px;
+}
+.ct-buy label { color: #35453a; font-weight: bold; }
+.ct-buy input[type="number"] {
+  width: 90px;
+  padding: 10px;
+  background: #ffffff;
+  color: #26382b;
+  border: 1px solid #d9dfda;
+  border-radius: 8px;
+  text-align: center;
+}
+.ct-buttons {
+  display: flex;
+  gap: 12px;
+  width: 100%;
+}
+
+.ct-btn {
+  display: inline-block;
+  background: #238b45;
+  color: #fff;
+  border: none;
+  padding: 12px 26px;
+  border-radius: 8px;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  text-decoration: none;
+  transition: background 0.2s ease;
+}
+.ct-btn:hover { background: #176b34; }
+.ct-btn-alt { background: #f5a623; }
+.ct-btn-alt:hover { background: #df8d0c; }
+.ct-btn-off { background: #cccccc; color: #666666; cursor: not-allowed; }
+.ct-btn-off:hover { background: #cccccc; }
+
+/* Cam kết */
+.ct-perks {
+  list-style: none;
+  margin: 0 0 22px;
+  padding: 18px 0 0;
+  border-top: 1px solid #eeeeee;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  color: #555555;
+}
+
+.ct-back {
+  display: inline-block;
+  color: #666666;
+  text-decoration: none;
+}
+.ct-back:hover { color: #238b45; }
+
+/* Sản phẩm cùng loại */
+.ct-related { margin-top: 60px; }
+.ct-related h2 {
+  margin: 0 0 20px;
+  font-size: 22px;
+  color: #203326;
+}
+.ct-related-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 20px;
+}
+.ct-card {
+  background: #ffffff;
+  border: 1px solid #eeeeee;
+  border-radius: 14px;
+  overflow: hidden;
+  text-decoration: none;
+  color: #26382b;
+  transition: transform 0.25s ease, box-shadow 0.25s ease;
+}
+.ct-card:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.08);
+}
+.ct-card-img {
+  height: 150px;
+  background: #f5f9f4;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 48px;
+  overflow: hidden;
+}
+.ct-card-img img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.ct-card h3 { margin: 12px 14px 4px; font-size: 16px; color: #203326; }
+.ct-card p  { margin: 0 14px 14px; color: #238b45; font-weight: 700; }
+
+/* Không tìm thấy */
+.ct-empty {
+  text-align: center;
+  padding: 60px 20px;
+  color: #777777;
+}
+.ct-empty-icon { font-size: 52px; margin-bottom: 10px; }
+.ct-empty h2 { color: #203326; margin: 0 0 8px; }
+.ct-empty .ct-btn { margin-top: 16px; }
+
+/* Responsive */
+@media (max-width: 900px) {
+  .ct-main { grid-template-columns: 1fr; gap: 28px; }
+  .ct-related-grid { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 500px) {
+  .ct-related-grid { grid-template-columns: 1fr; }
+  .ct-buttons { flex-direction: column; }
+}

@@ -1,0 +1,44 @@
+*{box-sizing:border-box}
+body{margin:0;font-family:Arial,sans-serif;background:#f6f8f5;color:#263328}
+.header{display:flex;align-items:center;justify-content:space-between;padding:18px 6%;background:#fff;box-shadow:0 2px 10px #0000000c}
+.logo{font-weight:700;color:#27833c;font-size:20px}
+nav{display:flex;gap:24px}
+nav a,.continue{color:#347c3d;text-decoration:none}
+.header-icon{font-size:20px}
+.header-icon span{background:#2f8b43;color:white;border-radius:50%;padding:3px 8px;font-size:13px}
+.container{max-width:1200px;margin:42px auto;padding:0 20px}
+h1{margin-bottom:6px}.subtitle{color:#788078;margin-top:0}
+.cart-layout{display:grid;grid-template-columns:minmax(0,1.8fr) minmax(300px,1fr);gap:24px;margin-top:28px}
+.cart-box,.summary{background:white;border-radius:12px;padding:24px;box-shadow:0 3px 18px #00000008}
+.cart-title{display:flex;justify-content:space-between;align-items:center}
+.cart-title h2,.summary h2{font-size:20px}
+.cart-header,.product-item{display:grid;grid-template-columns:2fr .9fr 1fr .9fr;gap:12px;align-items:center}
+.cart-header{padding:16px 0;color:#788078;font-size:13px;border-bottom:1px solid #e9eee8}
+.product-item{padding:20px 0;border-bottom:1px solid #edf0ec}
+.product-info{display:flex;align-items:center;gap:12px;min-width:0}
+.product-info h3{font-size:15px;margin:0 0 6px}
+.product-info p{font-size:13px;color:#899189;margin:0 0 7px}
+.product-img{width:55px;height:55px;border-radius:10px;display:grid;place-items:center;font-size:28px;flex-shrink:0}
+.orange{background:#fff0dc}.avocado{background:#eaf4df}
+.price,.total{font-weight:600;font-size:14px}
+.quantity{display:flex;align-items:center;gap:10px}
+.quantity button{width:27px;height:27px;border:1px solid #dce5da;background:white;border-radius:6px;cursor:pointer;font-size:17px}
+.remove-product,.remove-coupon{border:0;background:none;color:#c44b43;padding:0;cursor:pointer;font-size:12px}
+.continue{display:inline-block;margin-top:22px}
+.summary{height:max-content}
+.discount{display:flex;gap:8px;margin:20px 0}
+.discount input{min-width:0;flex:1;padding:12px;border:1px solid #dce5da;border-radius:7px}
+.discount button,.checkout{border:0;border-radius:7px;background:#2f8b43;color:white;padding:11px 15px;cursor:pointer}
+.summary-row{display:flex;justify-content:space-between;margin:17px 0;color:#667066}
+.discount-text strong{color:#2f8b43}
+.summary-total{display:flex;justify-content:space-between;font-size:18px;margin:20px 0}
+.summary-total strong{color:#2f8b43}
+.checkout{width:100%;padding:14px;font-size:15px}
+.secure{text-align:center;color:#879187;font-size:12px;margin-bottom:0}
+.coupon-applied{font-size:13px;color:#2f8b43}
+.notice{font-size:13px;min-height:18px}
+.notice.error{color:#c0392b}.notice.success{color:#27833c}
+.empty-cart{padding:25px 0;color:#788078}
+footer{text-align:center;padding:25px;color:#899189;font-size:13px}
+@media(max-width:850px){.cart-layout{grid-template-columns:1fr}.header{flex-wrap:wrap;gap:15px}nav{gap:12px;flex-wrap:wrap}}
+@media(max-width:600px){.cart-box,.summary{padding:15px}.cart-header{display:none}.product-item{grid-template-columns:1fr 1fr;gap:12px}.product-info{grid-column:1/-1}.price:before{content:'Đơn giá: ';font-weight:400;color:#788078}.total:before{content:'Thành tiền: ';font-weight:400;color:#788078}.quantity{justify-content:flex-start}}
