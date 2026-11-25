@@ -13,20 +13,37 @@ function e($value) {
     return htmlspecialchars((string)$value, ENT_QUOTES, 'UTF-8');
 }
 
-// 1. Thống kê KPI tổng quan từ Database
-$totalRevenue = (float)($conn->query("SELECT SUM(TongTien) AS rev FROM donhang")->fetch_assoc()['rev'] ?? 0);
-$totalOrders  = (int)($conn->query("SELECT COUNT(*) AS total FROM donhang")->fetch_assoc()['total'] ?? 0);
+// Điều kiện lọc đơn hàng đã giao thành công
+$deliveredFilter = "TrangThai IN ('Đã giao', 'Đã hoàn thành')";
+
+// 1. Thống kê KPI tổng quan từ Database (chỉ tính đơn Đã giao)
+$totalRevenue = (float)($conn->query("
+    SELECT COALESCE(SUM(TongTien), 0) AS rev 
+    FROM donhang 
+    WHERE {$deliveredFilter}
+")->fetch_assoc()['rev'] ?? 0);
+
+$totalOrders = (int)($conn->query("
+    SELECT COUNT(*) AS total 
+    FROM donhang 
+    WHERE {$deliveredFilter}
+")->fetch_assoc()['total'] ?? 0);
 
 $tableUsers = $conn->query("SHOW TABLES LIKE 'users'")->num_rows > 0 ? 'users' : 'nguoidung';
 $totalUsers = (int)($conn->query("SELECT COUNT(*) AS total FROM {$tableUsers}")->fetch_assoc()['total'] ?? 0);
 
-// Tính tổng sản phẩm đã bán
+// Tính tổng sản phẩm đã bán (chỉ tính đơn Đã giao)
+$ctCols = array_column($conn->query("SHOW COLUMNS FROM chitietdonhang")->fetch_all(MYSQLI_ASSOC), 'Field');
+$fkCol  = in_array('MaDonHang', $ctCols) ? 'MaDonHang' : 'MaDH';
+
 $totalItemsSold = (int)($conn->query("
-    SELECT SUM(SoLuong) AS total 
-    FROM chitietdonhang
+    SELECT COALESCE(SUM(c.SoLuong), 0) AS total 
+    FROM chitietdonhang c
+    INNER JOIN donhang d ON c.{$fkCol} = d.MaDonHang
+    WHERE d.{$deliveredFilter}
 ")->fetch_assoc()['total'] ?? 0);
 
-// 2. Lấy dữ liệu doanh thu 6 tháng gần nhất để vẽ Biểu đồ cột
+// 2. Lấy dữ liệu doanh thu 6 tháng gần nhất để vẽ Biểu đồ cột (chỉ tính đơn Đã giao)
 $monthlySalesData = [];
 $monthlyLabels = [];
 for ($i = 5; $i >= 0; $i--) {
@@ -37,6 +54,7 @@ for ($i = 5; $i >= 0; $i--) {
         SELECT COALESCE(SUM(TongTien), 0) AS total 
         FROM donhang 
         WHERE DATE_FORMAT(NgayDat, '%Y-%m') = ?
+          AND {$deliveredFilter}
     ");
     $stmtM->bind_param('s', $monthYear);
     $stmtM->execute();
@@ -46,7 +64,7 @@ for ($i = 5; $i >= 0; $i--) {
     $monthlySalesData[] = $rev;
 }
 
-// 3. Lấy Top 5 sản phẩm bán chạy nhất (Sales Ranking)
+// 3. Lấy Top 5 sản phẩm bán chạy nhất (Sales Ranking - chỉ tính đơn Đã giao)
 $sqlRanking = "
     SELECT 
         s.TenSP,
@@ -54,7 +72,9 @@ $sqlRanking = "
         COALESCE(SUM(c.SoLuong * c.DonGia), 0) AS TongTienBan
     FROM sanpham s
     LEFT JOIN chitietdonhang c ON s.MaSP = c.MaSP
+    LEFT JOIN donhang d ON c.{$fkCol} = d.MaDonHang AND d.{$deliveredFilter}
     GROUP BY s.MaSP, s.TenSP
+    HAVING TongBan > 0
     ORDER BY TongBan DESC
     LIMIT 5
 ";
@@ -111,7 +131,7 @@ $topProducts = $conn->query($sqlRanking)->fetch_all(MYSQLI_ASSOC);
         </div>
 
         <div class="content">
-            <!-- HÀNG 1: 4 THẺ CHỈ SỐ KPI VỚI BIỂU ĐỒ NỀN THU NHỎ -->
+            <!-- HÀNG 1: 4 THẺ CHỈ SỐ KPI -->
             <div class="kpi-row">
                 <!-- Thẻ 1: Tổng doanh thu -->
                 <div class="kpi-card">
@@ -119,16 +139,16 @@ $topProducts = $conn->query($sqlRanking)->fetch_all(MYSQLI_ASSOC);
                         <div class="kpi-title">Tổng Doanh Thu <span>ⓘ</span></div>
                         <div class="kpi-num"><?= number_format($totalRevenue, 0, ',', '.') ?> đ</div>
                     </div>
-                    <div class="kpi-foot">Doanh thu tích lũy toàn hệ thống</div>
+                    <div class="kpi-foot">Tính trên các đơn hàng đã giao</div>
                 </div>
 
                 <!-- Thẻ 2: Đơn hàng -->
                 <div class="kpi-card">
                     <div>
-                        <div class="kpi-title">Tổng Đơn Hàng <span>ⓘ</span></div>
+                        <div class="kpi-title">Đơn Hàng Đã Giao <span>ⓘ</span></div>
                         <div class="kpi-num"><?= number_format($totalOrders) ?></div>
                     </div>
-                    <div class="kpi-foot">Số đơn hàng đã phát sinh</div>
+                    <div class="kpi-foot">Số đơn giao thành công</div>
                 </div>
 
                 <!-- Thẻ 3: Sản phẩm bán ra -->
@@ -137,7 +157,7 @@ $topProducts = $conn->query($sqlRanking)->fetch_all(MYSQLI_ASSOC);
                         <div class="kpi-title">Sản Phẩm Đã Bán <span>ⓘ</span></div>
                         <div class="kpi-num"><?= number_format($totalItemsSold) ?></div>
                     </div>
-                    <div class="kpi-foot">Tổng lượt sản lượng xuất kho</div>
+                    <div class="kpi-foot">Tổng sản lượng đã giao khách</div>
                 </div>
 
                 <!-- Thẻ 4: Khách hàng -->
@@ -155,7 +175,7 @@ $topProducts = $conn->query($sqlRanking)->fetch_all(MYSQLI_ASSOC);
                 <!-- Cột trái: Biểu đồ cột doanh thu 6 tháng -->
                 <div class="dash-panel">
                     <div class="dash-panel-head">
-                        <div class="dash-panel-title">Xu hướng doanh thu (6 tháng gần nhất)</div>
+                        <div class="dash-panel-title">Xu hướng doanh thu đã giao (6 tháng gần nhất)</div>
                     </div>
                     <div style="height: 320px; position: relative;">
                         <canvas id="salesChart"></canvas>
@@ -185,7 +205,7 @@ $topProducts = $conn->query($sqlRanking)->fetch_all(MYSQLI_ASSOC);
                     endforeach; 
                     ?>
                     <?php if (count($topProducts) === 0): ?>
-                        <li style="padding: 20px 0; text-align: center; color: #94a3b8;">Chưa có dữ liệu bán hàng</li>
+                        <li style="padding: 20px 0; text-align: center; color: #94a3b8;">Chưa có đơn hàng nào đã giao</li>
                     <?php endif; ?>
                     </ul>
                 </div>
