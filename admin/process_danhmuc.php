@@ -1,5 +1,5 @@
 <?php
-// Xử lý thêm / cập nhật / xóa danh mục.
+// Xử lý thêm / cập nhật / xóa danh mục (đã gộp 1 bảng loaisanpham).
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
@@ -18,19 +18,10 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     goBack('err', 'Yêu cầu không hợp lệ.');
 }
 
-// Bảng phụ lưu thông tin mở rộng của danh mục.
-$conn->query("
-    CREATE TABLE IF NOT EXISTS loaisanpham_admin (
-        maloaisanpham INT NOT NULL PRIMARY KEY,
-        icon VARCHAR(30) NOT NULL DEFAULT '📦',
-        mota VARCHAR(255) NOT NULL DEFAULT '',
-        trangthai VARCHAR(20) NOT NULL DEFAULT 'Hoạt động'
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-");
-
 $action = $_POST['action'] ?? '';
 
 try {
+    // 1. THÊM DANH MỤC
     if ($action === 'add') {
         $name   = trim($_POST['name'] ?? '');
         $icon   = trim($_POST['icon'] ?? '📦');
@@ -58,24 +49,18 @@ try {
             goBack('err', 'Tên danh mục đã tồn tại.');
         }
 
-        // Thêm vào bảng loaisanpham cùng với cột hien_thi
-        $stmt = $conn->prepare("INSERT INTO loaisanpham (tenloaisanpham, hien_thi) VALUES (?, ?)");
-        $stmt->bind_param('si', $name, $hienThi);
-        $stmt->execute();
-        $newId = (int)$conn->insert_id;
-
-        // Lưu thông tin bổ sung vào bảng loaisanpham_admin
-        $meta = $conn->prepare("
-            INSERT INTO loaisanpham_admin (maloaisanpham, icon, mota, trangthai)
-            VALUES (?, ?, ?, ?)
-            ON DUPLICATE KEY UPDATE icon = VALUES(icon), mota = VALUES(mota), trangthai = VALUES(trangthai)
+        // Thêm trực tiếp tất cả thông tin vào bảng loaisanpham
+        $stmt = $conn->prepare("
+            INSERT INTO loaisanpham (tenloaisanpham, hien_thi, icon, mota, trangthai) 
+            VALUES (?, ?, ?, ?, ?)
         ");
-        $meta->bind_param('isss', $newId, $icon, $desc, $status);
-        $meta->execute();
+        $stmt->bind_param('sisss', $name, $hienThi, $icon, $desc, $status);
+        $stmt->execute();
 
         goBack('msg', 'Thêm danh mục thành công!');
     }
 
+    // 2. CẬP NHẬT DANH MỤC
     if ($action === 'update') {
         $id     = filter_input(INPUT_POST, 'id', FILTER_VALIDATE_INT);
         $name   = trim($_POST['name'] ?? '');
@@ -105,9 +90,13 @@ try {
             goBack('err', 'Tên danh mục này đã được sử dụng.');
         }
 
-        // Cập nhật tên và cột hien_thi trong bảng loaisanpham
-        $stmt = $conn->prepare("UPDATE loaisanpham SET tenloaisanpham = ?, hien_thi = ? WHERE maloaisanpham = ?");
-        $stmt->bind_param('sii', $name, $hienThi, $id);
+        // Cập nhật toàn bộ thông tin trong bảng loaisanpham
+        $stmt = $conn->prepare("
+            UPDATE loaisanpham 
+            SET tenloaisanpham = ?, hien_thi = ?, icon = ?, mota = ?, trangthai = ? 
+            WHERE maloaisanpham = ?
+        ");
+        $stmt->bind_param('sisssi', $name, $hienThi, $icon, $desc, $status, $id);
         $stmt->execute();
 
         if ($stmt->affected_rows === 0) {
@@ -119,25 +108,17 @@ try {
             }
         }
 
-        // Cập nhật thông tin mở rộng trong bảng loaisanpham_admin
-        $meta = $conn->prepare("
-            INSERT INTO loaisanpham_admin (maloaisanpham, icon, mota, trangthai)
-            VALUES (?, ?, ?, ?)
-            ON DUPLICATE KEY UPDATE icon = VALUES(icon), mota = VALUES(mota), trangthai = VALUES(trangthai)
-        ");
-        $meta->bind_param('isss', $id, $icon, $desc, $status);
-        $meta->execute();
-
         goBack('msg', 'Cập nhật danh mục thành công!');
-    }
+    } // <--- Dấu ngoặc đóng bị thiếu nằm ở đây
 
+    // 3. XÓA DANH MỤC
     if ($action === 'delete') {
         $id = filter_input(INPUT_POST, 'id', FILTER_VALIDATE_INT);
         if (!$id || $id < 1) {
             goBack('err', 'Mã danh mục không hợp lệ.');
         }
 
-        // Không cho xóa danh mục đang có sản phẩm để tránh lỗi khóa ngoại.
+        // Không cho xóa danh mục đang có sản phẩm để tránh lỗi khóa ngoại
         $count = $conn->prepare("SELECT COUNT(*) AS total FROM sanpham WHERE maloaisanpham = ?");
         $count->bind_param('i', $id);
         $count->execute();
@@ -147,31 +128,19 @@ try {
             goBack('err', 'Danh mục đang có sản phẩm. Hãy chuyển sản phẩm sang danh mục khác hoặc tạm ẩn danh mục.');
         }
 
-        $conn->begin_transaction();
-
-        $meta = $conn->prepare("DELETE FROM loaisanpham_admin WHERE maloaisanpham = ?");
-        $meta->bind_param('i', $id);
-        $meta->execute();
-
         $stmt = $conn->prepare("DELETE FROM loaisanpham WHERE maloaisanpham = ?");
         $stmt->bind_param('i', $id);
         $stmt->execute();
 
         if ($stmt->affected_rows < 1) {
-            $conn->rollback();
             goBack('err', 'Không tìm thấy danh mục cần xóa.');
         }
 
-        $conn->commit();
         goBack('msg', 'Xóa danh mục thành công!');
     }
 
     goBack('err', 'Thao tác không được hỗ trợ.');
 } catch (mysqli_sql_exception $ex) {
-    if ($conn->errno) {
-        try { $conn->rollback(); } catch (Throwable $ignored) {}
-    }
-    // Ghi lỗi chi tiết vào log máy chủ
     error_log('process_danhmuc.php: ' . $ex->getMessage());
     goBack('err', 'Không thể lưu thay đổi. Kiểm tra cấu trúc bảng hoặc dữ liệu liên quan.');
 }

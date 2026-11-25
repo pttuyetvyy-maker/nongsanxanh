@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Đăng ký - Nông Sản Xanh</title>
-    <link rel="stylesheet" href="/nongsanxanh/themes/styledk.css?v=<?= time() ?>"></head>
+    <link rel="stylesheet" href="/nongsanxanh/themes/styledk.css?v=<?= time() ?>">
     <style>
         .password-wrapper {
             position: relative;
@@ -70,22 +70,6 @@
             text-decoration: underline;
             margin-left: 5px;
         }
-
-        /* Thêm style cho thẻ select chọn vai trò */
-        .form-group select {
-            width: 100%;
-            padding: 10px 12px;
-            border: 1px solid #ccc;
-            border-radius: 6px;
-            font-size: 14px;
-            background-color: #fff;
-            outline: none;
-            transition: border-color 0.2s ease;
-        }
-
-        .form-group select:focus {
-            border-color: #238b45;
-        }
     </style>
 </head>
 <body class="auth-page">
@@ -135,15 +119,6 @@
                 <input type="tel" id="phone" name="phone" placeholder="Nhập số điện thoại" required>
             </div>
 
-            <!-- MỤC MỚI THÊM: Chọn loại tài khoản -->
-            <div class="form-group">
-                <label for="role">Loại tài khoản</label>
-                <select id="role" name="role" required>
-                    <option value="customer" selected>Khách hàng</option>
-                    <option value="admin">Quản trị viên</option>
-                </select>
-            </div>
-
             <div class="form-group">
                 <label for="password">Mật khẩu</label>
                 <div class="password-wrapper">
@@ -160,7 +135,7 @@
             <div class="form-group">
                 <label for="confirm-password">Xác nhận mật khẩu</label>
                 <div class="password-wrapper">
-                    <input type="password" id="confirm-password" name="confirm-password" placeholder="Nhập lại mật khẩu" required>
+                    <input type="password" id="confirm-password" name="confirm-password" minlength="8" placeholder="Nhập lại mật khẩu" required>
                     <span class="toggle-password" onclick="togglePass('confirm-password', this)">
                         <svg viewBox="0 0 24 24">
                             <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>

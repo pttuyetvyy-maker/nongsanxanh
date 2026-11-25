@@ -3,6 +3,7 @@ if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
 require_once __DIR__ . '/../config/db.php';
+date_default_timezone_set('Asia/Ho_Chi_Minh');
 
 // XỬ LÝ POST AJAX LƯU ĐƠN HÀNG
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -17,20 +18,43 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $user_id = (int)$_SESSION['user_id'];
     $input   = json_decode(file_get_contents('php://input'), true);
     $mode    = trim($input['mode'] ?? 'cart');
-    
-    // Tự động xử lý MaKM tương thích với bảng donhang hiện tại (dùng chuỗi rỗng thay vì NULL)
     $makm    = !empty($input['makm']) ? trim($input['makm']) : '';
 
-    // Kiểm tra xem bảng khuyenmai có mã mặc định hoặc chấp nhận mã rỗng không
+    // Kiểm tra mã khuyến mãi mặc định nếu vướng FK
     $chk_km = $conn->query("SELECT MaKM FROM khuyenmai LIMIT 1");
     if ($chk_km && $row_km = $chk_km->fetch_assoc()) {
-        // Nếu truyền rỗng bị vướng FK, lấy mã hợp lệ đầu tiên hoặc giữ chuỗi rỗng
         if ($makm === '') {
-            $makm = $row_km['MaKM']; 
+            $makm = $row_km['MaKM'];
         }
     }
 
-    $mapttt = 1; // Mặc định 1: Thanh toán COD
+    // Xử lý gói giao hàng & phí vận chuyển
+    $deliveryMode = trim($input['delivery_mode'] ?? 'now'); // 'now' | 'schedule'
+    $deliveryTier = trim($input['delivery_tier'] ?? 'standard'); // 'priority' | 'standard' | 'saver'
+    $scheduleDate = trim($input['schedule_date'] ?? '');
+    $scheduleTime = trim($input['schedule_time'] ?? '09:00');
+
+    $phi_ship = 25000;
+    $ngay_giao_sql = date('Y-m-d H:i:s', strtotime('+3 hours'));
+
+    if ($deliveryMode === 'schedule' && preg_match('/^\d{4}-\d{2}-\d{2}$/', $scheduleDate)) {
+        $phi_ship = 25000;
+        $gio_hop_le = preg_match('/^\d{2}:\d{2}$/', $scheduleTime) ? $scheduleTime . ':00' : '09:00:00';
+        $ngay_giao_sql = $scheduleDate . ' ' . $gio_hop_le;
+    } else {
+        if ($deliveryTier === 'priority') {
+            $phi_ship = 29000; // +4.000đ
+            $ngay_giao_sql = date('Y-m-d H:i:s', strtotime('+90 minutes'));
+        } elseif ($deliveryTier === 'saver') {
+            $phi_ship = 22000; // -3.000đ
+            $ngay_giao_sql = date('Y-m-d H:i:s', strtotime('+6 hours'));
+        } else {
+            $phi_ship = 25000; // Tiêu chuẩn
+            $ngay_giao_sql = date('Y-m-d H:i:s', strtotime('+3 hours'));
+        }
+    }
+
+    $mapttt = 1; // Thanh toán COD
     $cart   = ($mode === 'buynow') ? ($_SESSION['buy_now'] ?? []) : ($_SESSION['cart'] ?? []);
 
     if (empty($cart)) {
@@ -55,7 +79,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     }
 
-    $tong_thanhtoan = max(0, $tam_tinh + 25000 - 10000);
+    $giam_gia = 10000;
+    $tong_thanhtoan = max(0, $tam_tinh + $phi_ship - $giam_gia);
 
     // 2. Lấy thông tin người nhận từ bảng users
     $stmt_u = $conn->prepare("SELECT fullname, phone FROM users WHERE MaND = ? LIMIT 1");
@@ -67,11 +92,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $sdt        = $usr['phone'] ?? '0946378461';
     $dia_chi    = 'Thành phố Hồ Chí Minh, Việt Nam';
 
-    // 3. Thêm đơn hàng vào bảng donhang
-    $stmt_dh = $conn->prepare("INSERT INTO donhang (NgayDat, NgayGiao, TongTien, TrangThai, DiaChiGiao, MaND, MaPTTT, MaKM, SoDienThoai, NguoiNhan) VALUES (NOW(), NOW(), ?, 'Đang xử lý', ?, ?, ?, ?, ?, ?)");
+    // 3. Thêm đơn hàng vào bảng donhang (lưu NgayGiao theo lựa chọn của khách)
+    $stmt_dh = $conn->prepare("INSERT INTO donhang (NgayDat, NgayGiao, TongTien, TrangThai, DiaChiGiao, MaND, MaPTTT, MaKM, SoDienThoai, NguoiNhan) VALUES (NOW(), ?, ?, 'Đang xử lý', ?, ?, ?, ?, ?, ?)");
 
     if ($stmt_dh) {
-        $stmt_dh->bind_param("dsiisss", $tong_thanhtoan, $dia_chi, $user_id, $mapttt, $makm, $sdt, $nguoi_nhan);
+        $stmt_dh->bind_param("sdsiisss", $ngay_giao_sql, $tong_thanhtoan, $dia_chi, $user_id, $mapttt, $makm, $sdt, $nguoi_nhan);
         if ($stmt_dh->execute()) {
             $madh = $conn->insert_id;
 
@@ -82,7 +107,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $stmt_ct->execute();
             }
 
-            // Dọn sạch session giỏ hàng
             if ($mode === 'buynow') {
                 unset($_SESSION['buy_now']);
             } else {
@@ -157,9 +181,147 @@ $u_info  = $stmt_u->get_result()->fetch_assoc();
 
 $fullname = $u_info['fullname'] ?? $_SESSION['user_name'] ?? 'Khách hàng';
 $phone    = $u_info['phone'] ?? '0946378461';
+
+$timePriority = date('H:i', strtotime('+90 minutes'));
+$timeStandard = date('H:i', strtotime('+3 hours'));
+$timeSaver    = date('H:i', strtotime('+6 hours'));
 ?>
 
 <link rel="stylesheet" href="<?= $rootDir ?>themes/order.css?v=<?= time() ?>">
+
+<style>
+    /* Khối chọn thời gian giao hàng giống mẫu */
+    .deliv-head {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 14px;
+    }
+    .deliv-title {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 16px;
+        font-weight: 700;
+        color: #111827;
+    }
+    .deliv-switch-btn {
+        background: none;
+        border: none;
+        color: #16834b;
+        font-family: inherit;
+        font-size: 13.5px;
+        font-weight: 600;
+        cursor: pointer;
+        padding: 4px 6px;
+        border-radius: 6px;
+        transition: 0.15s;
+    }
+    .deliv-switch-btn:hover {
+        background: #eaf5e7;
+    }
+    .deliv-options {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+    }
+    .deliv-opt {
+        position: relative;
+        border: 1.5px solid #e5e7eb;
+        border-radius: 10px;
+        padding: 13px 16px;
+        cursor: pointer;
+        transition: all 0.15s ease;
+        background: #fff;
+        overflow: hidden;
+    }
+    .deliv-opt:hover {
+        border-color: #a7f3d0;
+    }
+    .deliv-opt.active {
+        border-color: #16834b;
+        background: #f6fbf8;
+    }
+    .deliv-opt .corner-check {
+        display: none;
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 24px;
+        height: 24px;
+        background: #16834b;
+        color: #fff;
+        border-bottom-right-radius: 8px;
+        align-items: center;
+        justify-content: center;
+    }
+    .deliv-opt.active .corner-check {
+        display: flex;
+    }
+    .deliv-opt-title {
+        font-size: 14.5px;
+        font-weight: 600;
+        color: #111827;
+        transition: padding-left 0.15s;
+    }
+    .deliv-opt.active .deliv-opt-title {
+        color: #16834b;
+        padding-left: 16px;
+    }
+    .deliv-opt-sub {
+        font-size: 13px;
+        color: #6b7280;
+        margin-top: 4px;
+    }
+    .deliv-opt.active .deliv-opt-sub {
+        padding-left: 16px;
+    }
+    .deliv-opt-sub .hl-plus {
+        color: #dc2626;
+        font-weight: 600;
+    }
+    .deliv-opt-sub .hl-minus {
+        color: #16834b;
+        font-weight: 600;
+    }
+
+    /* Hẹn ngày giờ cụ thể */
+    .schedule-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 12px;
+        background: #f8fafc;
+        border: 1px solid #e5e7eb;
+        border-radius: 10px;
+        padding: 14px;
+    }
+    .schedule-field label {
+        display: block;
+        font-size: 12.5px;
+        font-weight: 600;
+        color: #4b5563;
+        margin-bottom: 6px;
+    }
+    .schedule-field input,
+    .schedule-field select {
+        width: 100%;
+        padding: 9px 11px;
+        border: 1px solid #d1d5db;
+        border-radius: 8px;
+        font-family: inherit;
+        font-size: 13.5px;
+        background: #fff;
+        box-sizing: border-box;
+    }
+    .schedule-field input:focus,
+    .schedule-field select:focus {
+        outline: none;
+        border-color: #16834b;
+    }
+    @media (max-width: 600px) {
+        .schedule-grid { grid-template-columns: 1fr; }
+    }
+</style>
 
 <main class="container">
 
@@ -182,7 +344,10 @@ $phone    = $u_info['phone'] ?? '0946378461';
                         <h2>Đơn hàng mới</h2>
                         <p>Ngày đặt: <?= date('d/m/Y') ?></p>
                     </div>
-                    <span class="status pending">⏳ Chờ thanh toán</span>
+                    <span class="status pending" style="display:inline-flex; align-items:center; gap:6px;">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                        <span>Chờ thanh toán</span>
+                    </span>
                 </div>
 
                 <ol class="timeline">
@@ -199,14 +364,75 @@ $phone    = $u_info['phone'] ?? '0946378461';
                     <li>
                         <span class="dot">3</span>
                         <strong>Đang giao</strong>
-                        <small>Dự kiến ngày mai</small>
+                        <small id="tl-deliv-sub">Dự kiến hôm nay</small>
                     </li>
                     <li>
                         <span class="dot">4</span>
                         <strong>Đã giao</strong>
-                        <small>Dự kiến 2 ngày tới</small>
+                        <small>Hoàn tất đơn</small>
                     </li>
                 </ol>
+            </section>
+
+            <!-- CHỌN THỜI GIAN GIAO HÀNG (GIAO NGAY / HẸN GIỜ) -->
+            <section class="card">
+                <div class="deliv-head">
+                    <div class="deliv-title">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#16834b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/>
+                        </svg>
+                        <span id="deliv-mode-heading">Giao ngay</span>
+                    </div>
+                    <button type="button" class="deliv-switch-btn" id="btnSwitchDeliveryMode" onclick="toggleDeliveryMode()">
+                        Đổi sang hẹn giờ
+                    </button>
+                </div>
+
+                <!-- CHẾ ĐỘ 1: GIAO NGAY (3 GÓI TỐC ĐỘ) -->
+                <div class="deliv-options" id="deliveryNowBox">
+                    <div class="deliv-opt" data-tier="priority" data-ship="29000" data-label="Hôm nay, <?= $timePriority ?>" onclick="selectDeliveryTier(this)">
+                        <span class="corner-check">
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                        </span>
+                        <div class="deliv-opt-title">Ưu tiên - <?= $timePriority ?></div>
+                        <div class="deliv-opt-sub">Thêm <span class="hl-plus">4.000đ</span> để nhận nông sản sớm hơn</div>
+                    </div>
+
+                    <div class="deliv-opt active" data-tier="standard" data-ship="25000" data-label="Hôm nay, <?= $timeStandard ?>" onclick="selectDeliveryTier(this)">
+                        <span class="corner-check">
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                        </span>
+                        <div class="deliv-opt-title">Tiêu chuẩn - <?= $timeStandard ?></div>
+                    </div>
+
+                    <div class="deliv-opt" data-tier="saver" data-ship="22000" data-label="Hôm nay, <?= $timeSaver ?>" onclick="selectDeliveryTier(this)">
+                        <span class="corner-check">
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                        </span>
+                        <div class="deliv-opt-title">Tiết kiệm - <?= $timeSaver ?></div>
+                        <div class="deliv-opt-sub">Phí giao hàng <span class="hl-minus">giảm 3.000đ</span></div>
+                    </div>
+                </div>
+
+                <!-- CHẾ ĐỘ 2: HẸN NGÀY GIỜ GIAO -->
+                <div id="deliveryScheduleBox" style="display:none;">
+                    <div class="schedule-grid">
+                        <div class="schedule-field">
+                            <label for="scheduleDate">Chọn ngày nhận hàng</label>
+                            <input type="date" id="scheduleDate" value="<?= date('Y-m-d', strtotime('+1 day')) ?>" min="<?= date('Y-m-d') ?>" max="<?= date('Y-m-d', strtotime('+14 days')) ?>" onchange="updateScheduleSummary()">
+                        </div>
+                        <div class="schedule-field">
+                            <label for="scheduleTime">Chọn khung giờ giao</label>
+                            <select id="scheduleTime" onchange="updateScheduleSummary()">
+                                <option value="08:00">08:00 - 10:00 (Buổi sáng)</option>
+                                <option value="10:00">10:00 - 12:00 (Trưa)</option>
+                                <option value="14:00">14:00 - 16:00 (Buổi chiều)</option>
+                                <option value="17:00">17:00 - 19:00 (Chiều tối)</option>
+                            </select>
+                        </div>
+                    </div>
+                    <p style="margin:10px 0 0 0; font-size:12.5px; color:#6b7280;">Phí giao hàng tiêu chuẩn áp dụng: <strong>25.000đ</strong>. Nông sản sẽ được đóng gói tươi mới sát giờ giao.</p>
+                </div>
             </section>
 
             <!-- DANH SÁCH SẢN PHẨM TRONG GIỎ -->
@@ -250,7 +476,9 @@ $phone    = $u_info['phone'] ?? '0946378461';
                 <h2>Phương thức thanh toán</h2>
                 <div class="pay-list">
                     <div class="pay-box selected" style="cursor: default;">
-                        <span class="pay-icon">💵</span>
+                        <span class="pay-icon" style="display:inline-flex; align-items:center; justify-content:center; color:#16834b;">
+                            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2"/><path d="M6 12h.01M18 12h.01"/></svg>
+                        </span>
                         <span class="pay-text">
                             <strong>Thanh toán khi nhận hàng (COD)</strong>
                             <small>Trả tiền mặt cho shipper khi nhận hàng</small>
@@ -277,6 +505,10 @@ $phone    = $u_info['phone'] ?? '0946378461';
                     <strong><?= htmlspecialchars($phone) ?></strong>
                 </div>
                 <div class="info-row">
+                    <span>Thời gian nhận</span>
+                    <strong id="summary-delivery-time" style="color:#16834b;">Hôm nay, <?= $timeStandard ?></strong>
+                </div>
+                <div class="info-row">
                     <span>Địa chỉ</span>
                     <strong>Thành phố Hồ Chí Minh, Việt Nam</strong>
                 </div>
@@ -291,7 +523,7 @@ $phone    = $u_info['phone'] ?? '0946378461';
                 </div>
                 <div class="sum-row">
                     <span>Phí vận chuyển</span>
-                    <strong><?= number_format($phi_ship, 0, ',', '.') ?>đ</strong>
+                    <strong id="summary-ship-fee"><?= number_format($phi_ship, 0, ',', '.') ?>đ</strong>
                 </div>
                 <div class="sum-row discount-text">
                     <span>Giảm giá</span>
@@ -302,13 +534,16 @@ $phone    = $u_info['phone'] ?? '0946378461';
 
                 <div class="sum-total">
                     <span>Tổng tiền</span>
-                    <strong><?= number_format($tong_tien, 0, ',', '.') ?>đ</strong>
+                    <strong id="summary-grand-total"><?= number_format($tong_tien, 0, ',', '.') ?>đ</strong>
                 </div>
 
                 <button class="btn-primary" onclick="xacNhanDatHang()">Xác nhận thanh toán →</button>
                 <button class="btn-outline" onclick="window.location.href='<?= $rootDir ?><?= $buyNow ? 'index1.php' : 'customer/giohang.php' ?>'">Hủy đơn hàng</button>
 
-                <p class="secure">🔒 Thanh toán an toàn và bảo mật</p>
+                <p class="secure" style="display:flex; align-items:center; justify-content:center; gap:6px;">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                    <span>Thanh toán an toàn và bảo mật</span>
+                </p>
             </section>
 
         </aside>
@@ -318,12 +553,83 @@ $phone    = $u_info['phone'] ?? '0946378461';
 </main>
 
 <script>
+const TAM_TINH = <?= (float)$tam_tinh ?>;
+const GIAM_GIA = <?= (float)$giam_gia ?>;
+
+let deliveryMode = 'now';      // 'now' hoặc 'schedule'
+let deliveryTier = 'standard'; // 'priority', 'standard', 'saver'
+let currentShipFee = 25000;
+
+function formatVND(num) {
+    return new Intl.NumberFormat('vi-VN').format(num) + 'đ';
+}
+
+function updateTotalUI(shipFee, timeText) {
+    currentShipFee = shipFee;
+    const grandTotal = Math.max(0, TAM_TINH + shipFee - GIAM_GIA);
+    document.getElementById('summary-ship-fee').innerText = formatVND(shipFee);
+    document.getElementById('summary-grand-total').innerText = formatVND(grandTotal);
+    document.getElementById('summary-delivery-time').innerText = timeText;
+    document.getElementById('tl-deliv-sub').innerText = timeText;
+}
+
+function selectDeliveryTier(el) {
+    document.querySelectorAll('#deliveryNowBox .deliv-opt').forEach(opt => opt.classList.remove('active'));
+    el.classList.add('active');
+
+    deliveryTier = el.getAttribute('data-tier');
+    const shipFee = parseInt(el.getAttribute('data-ship'), 10) || 25000;
+    const label = el.getAttribute('data-label') || '';
+    updateTotalUI(shipFee, label);
+}
+
+function toggleDeliveryMode() {
+    const nowBox = document.getElementById('deliveryNowBox');
+    const schBox = document.getElementById('deliveryScheduleBox');
+    const heading = document.getElementById('deliv-mode-heading');
+    const btn = document.getElementById('btnSwitchDeliveryMode');
+
+    if (deliveryMode === 'now') {
+        deliveryMode = 'schedule';
+        nowBox.style.display = 'none';
+        schBox.style.display = 'block';
+        heading.innerText = 'Hẹn giờ giao hàng';
+        btn.innerText = 'Đổi sang giao ngay';
+        updateScheduleSummary();
+    } else {
+        deliveryMode = 'now';
+        schBox.style.display = 'none';
+        nowBox.style.display = 'flex';
+        heading.innerText = 'Giao ngay';
+        btn.innerText = 'Đổi sang hẹn giờ';
+        const activeOpt = document.querySelector('#deliveryNowBox .deliv-opt.active');
+        if (activeOpt) selectDeliveryTier(activeOpt);
+    }
+}
+
+function updateScheduleSummary() {
+    const dateVal = document.getElementById('scheduleDate').value;
+    const timeSelect = document.getElementById('scheduleTime');
+    const timeLabel = timeSelect.options[timeSelect.selectedIndex].text.split(' (')[0];
+
+    let formattedDate = dateVal;
+    if (dateVal && dateVal.includes('-')) {
+        const parts = dateVal.split('-');
+        formattedDate = `${parts[2]}/${parts[1]}/${parts[0]}`;
+    }
+    updateTotalUI(25000, `${timeLabel}, ngày ${formattedDate}`);
+}
+
 function xacNhanDatHang() {
     fetch(window.location.href, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-            mode: '<?= $buyNow ? 'buynow' : 'cart' ?>'
+            mode: '<?= $buyNow ? 'buynow' : 'cart' ?>',
+            delivery_mode: deliveryMode,
+            delivery_tier: deliveryTier,
+            schedule_date: document.getElementById('scheduleDate').value,
+            schedule_time: document.getElementById('scheduleTime').value
         })
     })
     .then(res => res.json())

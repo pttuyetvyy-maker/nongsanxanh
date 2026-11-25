@@ -7,15 +7,14 @@ $conn->set_charset('utf8mb4');
 
 function e($val) { return htmlspecialchars((string)$val, ENT_QUOTES, 'UTF-8'); }
 
-// 1. TỰ ĐỘNG THÊM CỘT TraLoiAdmin VÀ TrangThai NẾU CSDL THIẾU
+// 1. TỰ ĐỘNG BỔ SUNG CÁC CỘT NẾU CSDL THIẾU
 $cols = $conn->query("SHOW COLUMNS FROM binhluan")->fetch_all(MYSQLI_ASSOC);
-$hasReply = false; $hasStatus = false;
-foreach ($cols as $c) {
-    if ($c['Field'] === 'TraLoiAdmin') $hasReply = true;
-    if ($c['Field'] === 'TrangThai') $hasStatus = true;
-}
-if (!$hasReply)  $conn->query("ALTER TABLE binhluan ADD COLUMN TraLoiAdmin TEXT NULL");
-if (!$hasStatus) $conn->query("ALTER TABLE binhluan ADD COLUMN TrangThai TINYINT(1) DEFAULT 1");
+$colNames = array_column($cols, 'Field');
+if (!in_array('TraLoiAdmin', $colNames)) $conn->query("ALTER TABLE binhluan ADD COLUMN TraLoiAdmin TEXT NULL");
+if (!in_array('TrangThai', $colNames))   $conn->query("ALTER TABLE binhluan ADD COLUMN TrangThai TINYINT(1) DEFAULT 1");
+if (!in_array('MaDH', $colNames))        $conn->query("ALTER TABLE binhluan ADD COLUMN MaDH INT NULL AFTER MaSP");
+if (!in_array('SoSao', $colNames))       $conn->query("ALTER TABLE binhluan ADD COLUMN SoSao TINYINT(1) NOT NULL DEFAULT 5 AFTER MaDH");
+if (!in_array('HinhAnh', $colNames))     $conn->query("ALTER TABLE binhluan ADD COLUMN HinhAnh VARCHAR(255) NULL AFTER SoSao");
 
 $msg = ""; $err = "";
 
@@ -50,7 +49,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 // 3. LẤY DANH SÁCH BÌNH LUẬN TỪ CSDL
-$sql = "SELECT b.MaBinhLuan, b.NoiDung, b.TraLoiAdmin, b.TrangThai, b.NgayDanhGia, 
+$sql = "SELECT b.MaBinhLuan, b.MaDH, b.SoSao, b.HinhAnh, b.NoiDung, b.TraLoiAdmin, b.TrangThai, b.NgayDanhGia, 
                COALESCE(u.fullname, 'Khách hàng') AS TenKhach, 
                s.TenSP 
         FROM binhluan b 
@@ -78,7 +77,7 @@ $ds_binhluan = $conn->query($sql)->fetch_all(MYSQLI_ASSOC);
         .comment-details-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 20px; }
         .detail-card { background: #fff; padding: 20px; border-radius: 10px; border: 1px solid #edf2f0; box-shadow: 0 2px 8px rgba(0,0,0,0.03); }
         .detail-card h3 { margin-top: 0; color: #1e3a29; font-size: 16px; border-bottom: 2px solid #eaf4ed; padding-bottom: 10px; }
-        .detail-item { display: flex; justify-content: space-between; margin-bottom: 12px; font-size: 14px; }
+        .detail-item { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; font-size: 14px; }
         .detail-item span:first-child { color: #6b7280; font-weight: 500; }
         .detail-item span:last-child { font-weight: 600; color: #111827; }
         
@@ -87,9 +86,14 @@ $ds_binhluan = $conn->query($sql)->fetch_all(MYSQLI_ASSOC);
         
         .btn-update { background: #16834b; color: #fff; border: none; padding: 10px 20px; border-radius: 6px; font-weight: bold; cursor: pointer; }
         .btn-cancel { background: #dc2626; color: #fff; border: none; padding: 10px 20px; border-radius: 6px; font-weight: bold; cursor: pointer; }
-        .icon-view-btn { padding: 6px 10px; border: 1px solid #d1d5db; background: #fff; border-radius: 6px; cursor: pointer; }
-        .icon-view-btn:hover { background: #f3f7f4; }
         
+        .icon-view-btn {
+            width: 34px; height: 34px; display: inline-flex; align-items: center; justify-content: center;
+            border: 1px solid #d1d5db; background: #fff; border-radius: 8px; cursor: pointer; color: #4b5563; transition: 0.15s;
+        }
+        .icon-view-btn:hover { background: #f3f7f4; border-color: #9ca3af; color: #111827; }
+        
+        .star-inline { display: inline-flex; align-items: center; gap: 2px; color: #f59e0b; }
         .toast-container { position:fixed; right:24px; bottom:24px; z-index:10001; }
         .toast-msg { padding:13px 18px; border-radius:10px; color:#fff; font-weight:600; box-shadow:0 8px 25px rgba(0,0,0,.15); }
         .toast-msg.success { background:#16834b; } .toast-msg.error { background:#bd3b32; }
@@ -116,7 +120,8 @@ $ds_binhluan = $conn->query($sql)->fetch_all(MYSQLI_ASSOC);
                                 <th>Mã BL</th>
                                 <th>Khách hàng</th>
                                 <th>Sản phẩm</th>
-                                <th>Nội dung đánh giá</th>
+                                <th>Đánh giá</th>
+                                <th>Nội dung</th>
                                 <th style="text-align:center;">Trạng thái</th>
                                 <th style="text-align:center;">Thao tác</th>
                             </tr>
@@ -124,19 +129,32 @@ $ds_binhluan = $conn->query($sql)->fetch_all(MYSQLI_ASSOC);
                         <tbody>
                         <?php foreach ($ds_binhluan as $bl): 
                             $tt = ($bl['TrangThai'] ?? 1) == 1;
+                            $sao = max(1, min(5, (int)($bl['SoSao'] ?? 5)));
                         ?>
                             <tr>
                                 <td><strong>#BL<?= str_pad($bl['MaBinhLuan'], 4, '0', STR_PAD_LEFT) ?></strong></td>
                                 <td><?= e($bl['TenKhach']) ?></td>
                                 <td><strong style="color:#16834b;"><?= e($bl['TenSP'] ?? 'Sản phẩm đã xóa') ?></strong></td>
-                                <td><?= e(mb_strimwidth($bl['NoiDung'], 0, 45, '...')) ?></td>
+                                <td>
+                                    <span class="star-inline" title="<?= $sao ?> sao">
+                                        <?php for ($i = 1; $i <= 5; $i++): ?>
+                                            <svg width="14" height="14" viewBox="0 0 24 24" fill="<?= $i <= $sao ? '#f59e0b' : '#e5e7eb' ?>"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+                                        <?php endfor; ?>
+                                    </span>
+                                </td>
+                                <td><?= e(mb_strimwidth($bl['NoiDung'], 0, 40, '...')) ?></td>
                                 <td style="text-align:center;">
                                     <span class="category-badge <?= $tt ? 'badge-green' : 'badge-danger' ?>">
                                         <?= $tt ? 'Hiển thị' : 'Đã ẩn' ?>
                                     </span>
                                 </td>
                                 <td style="text-align:center;">
-                                    <button type="button" class="icon-view-btn" onclick='selectComment(<?= json_encode($bl) ?>)' title="Xem & Trả lời">👁️</button>
+                                    <button type="button" class="icon-view-btn" onclick='selectComment(<?= json_encode($bl) ?>)' title="Xem & Trả lời">
+                                        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                                            <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/>
+                                            <circle cx="12" cy="12" r="3"/>
+                                        </svg>
+                                    </button>
                                 </td>
                             </tr>
                         <?php endforeach; ?>
@@ -158,12 +176,26 @@ $ds_binhluan = $conn->query($sql)->fetch_all(MYSQLI_ASSOC);
                             <span id="detail-sanpham" style="color:#16834b;">-</span>
                         </div>
                         <div class="detail-item">
+                            <span>Đơn hàng</span>
+                            <span id="detail-madh">-</span>
+                        </div>
+                        <div class="detail-item">
+                            <span>Số sao đánh giá</span>
+                            <span id="detail-sosao" class="star-inline">-</span>
+                        </div>
+                        <div class="detail-item">
                             <span>Ngày đánh giá</span>
                             <span id="detail-ngay">-</span>
                         </div>
                         <div style="margin-top:10px;">
                             <span style="color: #6b7280; font-weight: 500; font-size:14px; display:block; margin-bottom:4px;">Nội dung bình luận:</span>
                             <div id="detail-noidung" style="background:#f9fafb; padding:10px; border-radius:6px; border:1px solid #e5e7eb; font-size:14px; color:#1f2937;">-</div>
+                        </div>
+                        <div id="detail-img-wrap" style="margin-top:12px; display:none;">
+                            <span style="color: #6b7280; font-weight: 500; font-size:14px; display:block; margin-bottom:6px;">Ảnh chụp thực tế:</span>
+                            <a id="detail-img-link" href="#" target="_blank">
+                                <img id="detail-img" src="" alt="Ảnh đánh giá" style="max-height:130px; border-radius:8px; border:1px solid #e5e7eb; object-fit:cover;">
+                            </a>
                         </div>
                     </div>
 
@@ -210,14 +242,39 @@ $ds_binhluan = $conn->query($sql)->fetch_all(MYSQLI_ASSOC);
 </div>
 
 <script>
-// Hàm chọn bình luận khi bấm nút 👁️
+function renderStarSvg(count) {
+    const rating = Math.max(1, Math.min(5, parseInt(count) || 5));
+    let html = '';
+    for (let i = 1; i <= 5; i++) {
+        const fill = i <= rating ? '#f59e0b' : '#e5e7eb';
+        html += `<svg width="15" height="15" viewBox="0 0 24 24" fill="${fill}"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>`;
+    }
+    return html;
+}
+
+// Hàm chọn bình luận khi bấm nút xem chi tiết
 function selectComment(bl) {
     const formattedId = '#BL' + String(bl.MaBinhLuan).padStart(4, '0');
     document.getElementById('lbl-mabl').innerText = formattedId;
     document.getElementById('detail-khach').innerText = bl.TenKhach || 'Khách hàng';
     document.getElementById('detail-sanpham').innerText = bl.TenSP || 'Sản phẩm đã xóa';
+    document.getElementById('detail-madh').innerText = bl.MaDH ? ('#DH' + String(bl.MaDH).padStart(4, '0')) : '-';
+    document.getElementById('detail-sosao').innerHTML = renderStarSvg(bl.SoSao);
     document.getElementById('detail-ngay').innerText = bl.NgayDanhGia || '-';
     document.getElementById('detail-noidung').innerText = bl.NoiDung || '';
+
+    // Hiển thị ảnh nếu khách có đính kèm
+    const imgWrap = document.getElementById('detail-img-wrap');
+    const imgEl = document.getElementById('detail-img');
+    const imgLink = document.getElementById('detail-img-link');
+    if (bl.HinhAnh) {
+        const imgPath = '../uploads/binhluan/' + bl.HinhAnh;
+        imgEl.src = imgPath;
+        imgLink.href = imgPath;
+        imgWrap.style.display = 'block';
+    } else {
+        imgWrap.style.display = 'none';
+    }
     
     // Đưa thông tin sang Form bên phải
     document.getElementById('form-mabl').value = bl.MaBinhLuan;
@@ -240,7 +297,7 @@ setTimeout(() => {
 function deleteCurrentComment() {
     const mabl = document.getElementById('form-mabl').value;
     if (!mabl) {
-        alert('Vui lòng bấm nút 👁️ để chọn bình luận cần xóa!');
+        alert('Vui lòng chọn bình luận cần xóa!');
         return;
     }
     if (confirm('Bạn có chắc muốn xóa vĩnh viễn bình luận này?')) {

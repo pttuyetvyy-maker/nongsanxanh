@@ -19,6 +19,61 @@ if (isset($_SESSION['cart']) && is_array($_SESSION['cart'])) {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title><?= isset($pageTitle) ? htmlspecialchars($pageTitle) : 'Nông Sản Xanh' ?></title> 
     <link rel="stylesheet" href="<?= $rootDir ?>themes/styleindex1.css?v=<?= time() ?>">
+    <style>
+        .user-dropdown {
+            position: relative;
+            display: inline-flex;
+            align-items: center;
+        }
+        .user-dropdown-trigger {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            cursor: default;
+            user-select: none;
+            padding: 6px 0;
+        }
+        .user-dropdown-trigger svg {
+            transition: transform 0.2s ease;
+        }
+        .user-dropdown:hover .user-dropdown-trigger svg {
+            transform: rotate(180deg);
+        }
+        .user-dropdown-menu {
+            display: none;
+            position: absolute;
+            top: 100%;
+            right: 0;
+            min-width: 225px;
+            background: #ffffff;
+            border: 1px solid #e5e7eb;
+            border-radius: 10px;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.08);
+            padding: 6px;
+            z-index: 9999;
+        }
+        .user-dropdown:hover .user-dropdown-menu {
+            display: block;
+        }
+        .navbar .user-dropdown-menu a {
+            display: flex !important;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 12px !important;
+            margin: 0 !important;
+            border-radius: 7px;
+            font-size: 13.5px !important;
+            font-weight: 500;
+            color: #1f2937 !important;
+            text-decoration: none;
+            white-space: nowrap;
+            transition: background 0.15s ease, color 0.15s ease;
+        }
+        .navbar .user-dropdown-menu a:hover {
+            background: #eaf5e7 !important;
+            color: #16834b !important;
+        }
+    </style>
 </head> 
 <body>
 
@@ -39,11 +94,28 @@ if (isset($_SESSION['cart']) && is_array($_SESSION['cart'])) {
             </a>
 
             <?php if (isset($_SESSION["user_id"])) { ?>
-                <!-- THÊM LINK THEO DÕI ĐƠN HÀNG TRÊN HEADER -->
                 <a href="<?= $rootDir ?>customer/my_order.php" class="<?= (basename($_SERVER['SCRIPT_NAME']) == 'my_order.php') ? 'active' : '' ?>">
-                     Đơn hàng của tôi
+                    Đơn hàng của tôi
                 </a>
-                <span class="nav-user">Xin chào, <?= htmlspecialchars($_SESSION["user_name"] ?? $_SESSION["username"] ?? 'Khách'); ?></span>
+
+                <div class="user-dropdown">
+                    <span class="nav-user user-dropdown-trigger">
+                        <span>Xin chào, <?= htmlspecialchars($_SESSION["fullname"] ?? $_SESSION["user_name"] ?? $_SESSION["username"] ?? 'Khách'); ?></span>
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <polyline points="6 9 12 15 18 9"/>
+                        </svg>
+                    </span>
+                    <div class="user-dropdown-menu">
+                        <a href="<?= $rootDir ?>customer/profile.php">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                            </svg>
+                            <span>Chỉnh sửa thông tin cá nhân</span>
+                        </a>
+                    </div>
+                </div>
+
                 <a href="<?= $rootDir ?>customer/logout.php">Đăng xuất</a>
             <?php } else { ?>
                 <a href="<?= $rootDir ?>customer/login.php">Đăng nhập</a>

@@ -20,15 +20,15 @@ if (!isset($rootDir)) {
             <h3>Liên kết</h3>
             <a href="<?= $rootDir ?>index1.php">Trang chủ</a>
             <a href="<?= $rootDir ?>customer/danhmuc.php">Danh mục</a>
-            <a href="<?= $rootDir ?>index1.php#san-pham">Sản phẩm</a>
+            <a href="<?= $rootDir ?>customer/sanpham_theoloai.php">Sản phẩm</a>
             <a href="<?= $rootDir ?>index1.php#gioi-thieu">Giới thiệu</a>
         </div>
 
         <div class="footer-column">
             <h3>Hỗ trợ</h3>
-            <a href="#">Chính sách mua hàng</a>
-            <a href="#">Chính sách đổi trả</a>
-            <a href="#">Chính sách giao hàng</a>
+<a href="<?= $rootDir ?? '/nongsanxanh/' ?>customer/chinhsach_muahang.php">Chính sách mua hàng</a>
+<a href="<?= $rootDir ?? '/nongsanxanh/' ?>customer/chinhsach_doitra.php">Chính sách đổi trả</a>
+<a href="<?= $rootDir ?? '/nongsanxanh/' ?>customer/chinhsach_giaohang.php">Chính sách giao hàng</a>
         </div>
 
         <div class="footer-column">
