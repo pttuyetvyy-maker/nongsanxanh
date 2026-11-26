@@ -72,10 +72,24 @@ if ($checkTable->num_rows > 0) {
     }
 }
 
-// Gắn mảng sản phẩm vào từng đơn hàng
+// Đếm số lượng đơn hàng theo từng trạng thái & gắn mảng sản phẩm
+$statusCounts = [
+    'ALL'           => count($ds_donhang),
+    'Chờ xác nhận'  => 0,
+    'Đang xử lý'    => 0,
+    'Đang giao'     => 0,
+    'Đã giao'       => 0,
+    'Đã hủy'        => 0,
+];
+
 foreach ($ds_donhang as &$dhItem) {
     $idDon = (int)$dhItem['MaDonHang'];
     $dhItem['items'] = $chiTietTheoDon[$idDon] ?? [];
+    $st = trim($dhItem['TrangThai'] ?? '');
+    if ($st === 'Đã hoàn thành') $st = 'Đã giao';
+    if (isset($statusCounts[$st])) {
+        $statusCounts[$st]++;
+    }
 }
 unset($dhItem);
 ?>
@@ -87,13 +101,134 @@ unset($dhItem);
     <link rel="stylesheet" href="../themes/styleadmin.css?v=1">
     <link rel="stylesheet" href="../themes/category-fix.css?v=1">
     <style>
+        /* THANH CÔNG CỤ LỌC & TÌM KIẾM */
+        .order-toolbar {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: space-between;
+            align-items: center;
+            gap: 14px;
+            background: #fff;
+            padding: 14px 18px;
+            border-radius: 10px;
+            border: 1px solid #edf2f0;
+            margin-bottom: 16px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.02);
+        }
+
+        .status-filter-tabs {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            align-items: center;
+        }
+
+        .filter-tab {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 7px 13px;
+            border-radius: 20px;
+            border: 1px solid #e2e8f0;
+            background: #f8fafc;
+            color: #475569;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.15s ease;
+        }
+
+        .filter-tab:hover {
+            background: #eef6f0;
+            border-color: #b7dec3;
+            color: #1e3a29;
+        }
+
+        .filter-tab.active {
+            background: #16834b;
+            border-color: #16834b;
+            color: #ffffff;
+        }
+
+        .filter-tab .tab-count {
+            background: rgba(0, 0, 0, 0.08);
+            padding: 1px 7px;
+            border-radius: 12px;
+            font-size: 11.5px;
+            font-weight: 700;
+        }
+
+        .filter-tab.active .tab-count {
+            background: rgba(255, 255, 255, 0.22);
+            color: #ffffff;
+        }
+
+        .search-order-box {
+            position: relative;
+            min-width: 270px;
+            flex: 0 1 320px;
+        }
+
+        .search-order-box .svg-search {
+            position: absolute;
+            left: 12px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: #64748b;
+            pointer-events: none;
+        }
+
+        .search-order-input {
+            width: 100%;
+            padding: 9px 34px 9px 36px;
+            border: 1px solid #d1d5db;
+            border-radius: 8px;
+            font-size: 13.5px;
+            color: #111827;
+            background: #f9fafb;
+            outline: none;
+            transition: all 0.15s ease;
+            box-sizing: border-box;
+        }
+
+        .search-order-input:focus {
+            background: #ffffff;
+            border-color: #16834b;
+            box-shadow: 0 0 0 3px rgba(22, 131, 75, 0.12);
+        }
+
+        .btn-clear-search {
+            position: absolute;
+            right: 8px;
+            top: 50%;
+            transform: translateY(-50%);
+            background: transparent;
+            border: none;
+            color: #9ca3af;
+            cursor: pointer;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            padding: 4px;
+            border-radius: 50%;
+        }
+
+        .btn-clear-search:hover {
+            color: #374151;
+            background: #e5e7eb;
+        }
+
+        /* BẢNG ĐƠN HÀNG */
         .category-table { width:100%; border-collapse:collapse; font-size:14px; }
         .category-table th { padding:14px 16px; text-align:left; background:#eaf4ed; color:#1e3a29; font-weight:700; }
         .category-table td { padding:14px 16px; border-bottom:1px solid #edf2f0; vertical-align:middle; }
+        .category-table tbody tr.order-row:hover { background: #f8fbf9; }
+        .category-table tbody tr.order-row.selected-row { background: #eef7f1; }
         
         .category-badge { display:inline-block; padding:4px 10px; border-radius:20px; font-size:12px; font-weight:600; }
         .badge-green { background:#e5f2e9; color:#087443; }
         .badge-warning { background:#fef3c7; color:#92400e; }
+        .badge-info { background:#e0f2fe; color:#0369a1; }
         .badge-danger { background:#fee2e2; color:#991b1b; }
         
         .order-details-grid { display: grid; grid-template-columns: 1.35fr 0.85fr; gap: 20px; margin-top: 20px; align-items: start; }
@@ -159,6 +294,44 @@ unset($dhItem);
 
         <div class="content">
             <section class="panel active">
+
+                <!-- THANH LỌC TRẠNG THÁI & TÌM KIẾM MÃ ĐƠN -->
+                <div class="order-toolbar">
+                    <div class="status-filter-tabs" id="statusFilterTabs">
+                        <button type="button" class="filter-tab active" data-status="ALL">
+                            Tất cả <span class="tab-count"><?= $statusCounts['ALL'] ?></span>
+                        </button>
+                        <button type="button" class="filter-tab" data-status="Chờ xác nhận">
+                            Chờ xác nhận <span class="tab-count"><?= $statusCounts['Chờ xác nhận'] ?></span>
+                        </button>
+                        <button type="button" class="filter-tab" data-status="Đang xử lý">
+                            Đang xử lý <span class="tab-count"><?= $statusCounts['Đang xử lý'] ?></span>
+                        </button>
+                        <button type="button" class="filter-tab" data-status="Đang giao">
+                            Đang giao <span class="tab-count"><?= $statusCounts['Đang giao'] ?></span>
+                        </button>
+                        <button type="button" class="filter-tab" data-status="Đã giao">
+                            Đã giao <span class="tab-count"><?= $statusCounts['Đã giao'] ?></span>
+                        </button>
+                        <button type="button" class="filter-tab" data-status="Đã hủy">
+                            Đã hủy <span class="tab-count"><?= $statusCounts['Đã hủy'] ?></span>
+                        </button>
+                    </div>
+
+                    <div class="search-order-box">
+                        <svg class="svg-search" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="11" cy="11" r="8"></circle>
+                            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                        </svg>
+                        <input type="text" id="orderSearchInput" class="search-order-input" placeholder="Tìm mã đơn (#DH0001) hoặc tên khách...">
+                        <button type="button" id="clearSearchBtn" class="btn-clear-search" title="Xóa tìm kiếm">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                                <line x1="18" y1="6" x2="6" y2="18"></line>
+                                <line x1="6" y1="6" x2="18" y2="18"></line>
+                            </svg>
+                        </button>
+                    </div>
+                </div>
                 
                 <!-- BẢNG DANH SÁCH ĐƠN HÀNG -->
                 <div class="table-card">
@@ -173,17 +346,25 @@ unset($dhItem);
                                 <th style="text-align:center;">Thao tác</th>
                             </tr>
                         </thead>
-                        <tbody>
+                        <tbody id="ordersTableBody">
                         <?php foreach ($ds_donhang as $dh): 
-                            $stt = $dh['TrangThai'];
-                            $badge = 'badge-warning';
-                            if ($stt === 'Đã giao' || $stt === 'Đã hoàn thành') $badge = 'badge-green';
-                            elseif ($stt === 'Đã hủy') $badge = 'badge-danger';
+                            $stt = trim($dh['TrangThai'] ?? '');
+                            $normalizedStt = ($stt === 'Đã hoàn thành') ? 'Đã giao' : $stt;
                             
+                            $badge = 'badge-warning';
+                            if ($normalizedStt === 'Đã giao') $badge = 'badge-green';
+                            elseif ($normalizedStt === 'Đang giao') $badge = 'badge-info';
+                            elseif ($normalizedStt === 'Đã hủy') $badge = 'badge-danger';
+                            
+                            $maFormatted = '#DH' . str_pad($dh['MaDonHang'], 4, '0', STR_PAD_LEFT);
                             $tenKhach = $dh['NguoiNhan'] ?: ($dh['TenKhachHang'] ?: 'Khách lẻ');
                         ?>
-                            <tr>
-                                <td><strong>#DH<?= str_pad($dh['MaDonHang'], 4, '0', STR_PAD_LEFT) ?></strong></td>
+                            <tr class="order-row"
+                                data-id="<?= (int)$dh['MaDonHang'] ?>"
+                                data-code="<?= e(strtolower($maFormatted)) ?>"
+                                data-customer="<?= e(mb_strtolower($tenKhach, 'UTF-8')) ?>"
+                                data-status="<?= e($normalizedStt) ?>">
+                                <td><strong><?= $maFormatted ?></strong></td>
                                 <td><?= e($tenKhach) ?></td>
                                 <td><?= date('d/m/Y', strtotime($dh['NgayDat'])) ?></td>
                                 <td><strong style="color:#16834b;"><?= number_format($dh['TongTien'], 0, ',', '.') ?>đ</strong></td>
@@ -191,7 +372,7 @@ unset($dhItem);
                                     <span class="category-badge <?= $badge ?>"><?= e($stt) ?></span>
                                 </td>
                                 <td style="text-align:center;">
-                                    <button type="button" class="icon-view-btn" onclick='selectOrder(<?= htmlspecialchars(json_encode($dh), ENT_QUOTES, "UTF-8") ?>)' title="Xem chi tiết">
+                                    <button type="button" class="icon-view-btn" onclick='selectOrder(<?= htmlspecialchars(json_encode($dh), ENT_QUOTES, "UTF-8") ?>, this)' title="Xem chi tiết">
                                         <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
                                             <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/>
                                             <circle cx="12" cy="12" r="3"/>
@@ -200,6 +381,15 @@ unset($dhItem);
                                 </td>
                             </tr>
                         <?php endforeach; ?>
+                            <tr id="emptyFilterRow" style="display: none;">
+                                <td colspan="6" style="text-align:center; padding: 32px 16px; color:#6b7280;">
+                                    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" style="display:block; margin: 0 auto 8px;">
+                                        <circle cx="11" cy="11" r="8"></circle>
+                                        <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                                    </svg>
+                                    Không tìm thấy đơn hàng nào phù hợp với bộ lọc hiện tại.
+                                </td>
+                            </tr>
                         </tbody>
                     </table>
                 </div>
@@ -277,8 +467,8 @@ unset($dhItem);
                             <div style="margin-top: 15px;">
                                 <label style="display:block; font-size:13px; font-weight:600; margin-bottom:6px;">Trạng thái đơn hàng</label>
                                 <select name="trangthai" id="form-trangthai" class="form-select-status">
-                                    <option value="Đang xử lý">Đang xử lý</option>
                                     <option value="Chờ xác nhận">Chờ xác nhận</option>
+                                    <option value="Đang xử lý">Đang xử lý</option>
                                     <option value="Đang giao">Đang giao</option>
                                     <option value="Đã giao">Đã giao</option>
                                     <option value="Đã hủy">Đã hủy</option>
@@ -332,7 +522,17 @@ function formatNgayGiao(rawDate) {
 }
 
 // Hàm xử lý đổ dữ liệu khi bấm nút xem chi tiết
-function selectOrder(dh) {
+function selectOrder(dh, btnEl = null) {
+    // Tô sáng dòng đang chọn
+    document.querySelectorAll('#ordersTableBody tr.order-row').forEach(r => r.classList.remove('selected-row'));
+    if (btnEl) {
+        const row = btnEl.closest('tr');
+        if (row) row.classList.add('selected-row');
+    } else {
+        const firstRow = document.querySelector(`#ordersTableBody tr.order-row[data-id="${dh.MaDonHang}"]`);
+        if (firstRow) firstRow.classList.add('selected-row');
+    }
+
     const formattedId = '#DH' + String(dh.MaDonHang).padStart(4, '0');
     document.getElementById('lbl-madh').innerText = formattedId;
     document.getElementById('detail-khach').innerText = dh.NguoiNhan || dh.TenKhachHang || 'Khách lẻ';
@@ -393,6 +593,61 @@ function selectOrder(dh) {
     document.getElementById('cancel-madh').value = dh.MaDonHang;
     document.getElementById('form-trangthai').value = dh.TrangThai;
 }
+
+// BỘ LỌC TRẠNG THÁI & TÌM KIẾM MÃ ĐƠN
+let currentStatusFilter = 'ALL';
+const searchInput = document.getElementById('orderSearchInput');
+const clearBtn = document.getElementById('clearSearchBtn');
+
+function applyOrderFilters() {
+    const keyword = searchInput.value.trim().toLowerCase();
+    clearBtn.style.display = keyword.length > 0 ? 'inline-flex' : 'none';
+
+    const rows = document.querySelectorAll('#ordersTableBody tr.order-row');
+    let visibleCount = 0;
+
+    rows.forEach(row => {
+        const rowStatus = row.getAttribute('data-status') || '';
+        const rowCode = row.getAttribute('data-code') || '';
+        const rowId = row.getAttribute('data-id') || '';
+        const rowCustomer = row.getAttribute('data-customer') || '';
+
+        const matchStatus = (currentStatusFilter === 'ALL') || (rowStatus === currentStatusFilter);
+        const matchKeyword = !keyword ||
+                             rowCode.includes(keyword) ||
+                             rowId === keyword.replace(/^#?dh0*/i, '') ||
+                             rowCustomer.includes(keyword);
+
+        if (matchStatus && matchKeyword) {
+            row.style.display = '';
+            visibleCount++;
+        } else {
+            row.style.display = 'none';
+        }
+    });
+
+    const emptyRow = document.getElementById('emptyFilterRow');
+    if (emptyRow) {
+        emptyRow.style.display = visibleCount === 0 ? '' : 'none';
+    }
+}
+
+document.querySelectorAll('#statusFilterTabs .filter-tab').forEach(tab => {
+    tab.addEventListener('click', function() {
+        document.querySelectorAll('#statusFilterTabs .filter-tab').forEach(t => t.classList.remove('active'));
+        this.classList.add('active');
+        currentStatusFilter = this.getAttribute('data-status');
+        applyOrderFilters();
+    });
+});
+
+searchInput.addEventListener('input', applyOrderFilters);
+
+clearBtn.addEventListener('click', function() {
+    searchInput.value = '';
+    applyOrderFilters();
+    searchInput.focus();
+});
 
 // Đóng thông báo Toast sau 3s
 setTimeout(() => {

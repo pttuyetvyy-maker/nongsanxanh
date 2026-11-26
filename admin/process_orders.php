@@ -1,5 +1,4 @@
 <?php
-// Xử lý cập nhật trạng thái đơn hàng
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
@@ -19,28 +18,46 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 }
 
 $action = $_POST['action'] ?? '';
-$id     = filter_input(INPUT_POST, 'id', FILTER_VALIDATE_INT);
-$status = trim($_POST['status'] ?? '');
+$id     = (int)($_POST['madonhang'] ?? $_POST['id'] ?? 0);
+$status = trim($_POST['trangthai'] ?? $_POST['status'] ?? '');
 
-$validStatuses = ['Chờ xác nhận', 'Chờ xử lý', 'Đã thanh toán', 'Đang giao', 'Đã hoàn thành', 'Đã hủy'];
+$validStatuses = [
+    'Chờ xác nhận',
+    'Đang xử lý',
+    'Chờ xử lý',
+    'Đã thanh toán',
+    'Đang giao',
+    'Đã giao',
+    'Đã hoàn thành',
+    'Đã hủy'
+];
 
 try {
-    if ($action === 'update_status') {
-        if (!$id || $id < 1) {
-            goBack('err', 'Vui lòng chọn đơn hàng cần cập nhật.');
-        }
+    if ($id < 1) {
+        goBack('err', 'Vui lòng chọn đơn hàng cần xử lý.');
+    }
 
+    $formattedCode = '#DH' . str_pad($id, 4, '0', STR_PAD_LEFT);
+
+    if ($action === 'update_status') {
         if (!in_array($status, $validStatuses, true)) {
             goBack('err', 'Trạng thái đơn hàng không hợp lệ.');
         }
 
-        // Cập nhật CSDL
         $stmt = $conn->prepare("UPDATE donhang SET TrangThai = ? WHERE MaDonHang = ?");
         $stmt->bind_param('si', $status, $id);
         $stmt->execute();
 
-        $formattedCode = '#DH' . str_pad($id, 4, '0', STR_PAD_LEFT);
         goBack('msg', "Cập nhật trạng thái đơn hàng {$formattedCode} thành '{$status}' thành công!");
+    }
+
+    if ($action === 'cancel_order') {
+        $cancelStatus = 'Đã hủy';
+        $stmt = $conn->prepare("UPDATE donhang SET TrangThai = ? WHERE MaDonHang = ?");
+        $stmt->bind_param('si', $cancelStatus, $id);
+        $stmt->execute();
+
+        goBack('msg', "Đã hủy đơn hàng {$formattedCode} thành công!");
     }
 
     goBack('err', 'Thao tác không được hỗ trợ.');
