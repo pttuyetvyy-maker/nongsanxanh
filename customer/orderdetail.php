@@ -29,8 +29,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     // Xử lý gói giao hàng & phí vận chuyển
-    $deliveryMode = trim($input['delivery_mode'] ?? 'now'); // 'now' | 'schedule'
-    $deliveryTier = trim($input['delivery_tier'] ?? 'standard'); // 'priority' | 'standard' | 'saver'
+    $deliveryMode = trim($input['delivery_mode'] ?? 'now');
+    $deliveryTier = trim($input['delivery_tier'] ?? 'standard');
     $scheduleDate = trim($input['schedule_date'] ?? '');
     $scheduleTime = trim($input['schedule_time'] ?? '09:00');
 
@@ -43,13 +43,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $ngay_giao_sql = $scheduleDate . ' ' . $gio_hop_le;
     } else {
         if ($deliveryTier === 'priority') {
-            $phi_ship = 29000; // +4.000đ
+            $phi_ship = 29000;
             $ngay_giao_sql = date('Y-m-d H:i:s', strtotime('+90 minutes'));
         } elseif ($deliveryTier === 'saver') {
-            $phi_ship = 22000; // -3.000đ
+            $phi_ship = 22000;
             $ngay_giao_sql = date('Y-m-d H:i:s', strtotime('+6 hours'));
         } else {
-            $phi_ship = 25000; // Tiêu chuẩn
+            $phi_ship = 25000;
             $ngay_giao_sql = date('Y-m-d H:i:s', strtotime('+3 hours'));
         }
     }
@@ -62,7 +62,34 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         exit();
     }
 
-    // 1. Tính tổng tiền từ CSDL
+    // 1. Lấy thông tin người nhận mặc định từ bảng users (dùng làm fallback nếu client không gửi)
+    $stmt_u = $conn->prepare("SELECT fullname, phone FROM users WHERE MaND = ? LIMIT 1");
+    $stmt_u->bind_param("i", $user_id);
+    $stmt_u->execute();
+    $usr = $stmt_u->get_result()->fetch_assoc();
+
+    $default_name = $usr['fullname'] ?? $_SESSION['user_name'] ?? 'Khách hàng';
+    $default_sdt  = $usr['phone'] ?? '0946378461';
+
+    // Nhận thông tin đã chỉnh sửa từ form
+    $nguoi_nhan = trim((string)($input['nguoi_nhan'] ?? $default_name));
+    $sdt        = trim((string)($input['sdt'] ?? $default_sdt));
+    $dia_chi    = trim((string)($input['dia_chi'] ?? 'Thành phố Hồ Chí Minh, Việt Nam'));
+
+    if ($nguoi_nhan === '') {
+        echo json_encode(['success' => false, 'message' => 'Vui lòng nhập tên người nhận!']);
+        exit();
+    }
+    if (!preg_match('/^[0-9+\s().-]{8,15}$/', $sdt)) {
+        echo json_encode(['success' => false, 'message' => 'Số điện thoại người nhận không hợp lệ!']);
+        exit();
+    }
+    if ($dia_chi === '') {
+        echo json_encode(['success' => false, 'message' => 'Vui lòng nhập địa chỉ giao hàng!']);
+        exit();
+    }
+
+    // 2. Tính tổng tiền từ CSDL
     $ids = array_map('intval', array_keys($cart));
     $in_clause = implode(',', array_filter($ids));
 
@@ -82,17 +109,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $giam_gia = 10000;
     $tong_thanhtoan = max(0, $tam_tinh + $phi_ship - $giam_gia);
 
-    // 2. Lấy thông tin người nhận từ bảng users
-    $stmt_u = $conn->prepare("SELECT fullname, phone FROM users WHERE MaND = ? LIMIT 1");
-    $stmt_u->bind_param("i", $user_id);
-    $stmt_u->execute();
-    $usr = $stmt_u->get_result()->fetch_assoc();
-
-    $nguoi_nhan = $usr['fullname'] ?? $_SESSION['user_name'] ?? 'Khách hàng';
-    $sdt        = $usr['phone'] ?? '0946378461';
-    $dia_chi    = 'Thành phố Hồ Chí Minh, Việt Nam';
-
-    // 3. Thêm đơn hàng vào bảng donhang (lưu NgayGiao theo lựa chọn của khách)
+    // 3. Thêm đơn hàng vào bảng donhang (lưu đầy đủ thông tin người nhận đã chỉnh)
     $stmt_dh = $conn->prepare("INSERT INTO donhang (NgayDat, NgayGiao, TongTien, TrangThai, DiaChiGiao, MaND, MaPTTT, MaKM, SoDienThoai, NguoiNhan) VALUES (NOW(), ?, ?, 'Đang xử lý', ?, ?, ?, ?, ?, ?)");
 
     if ($stmt_dh) {
@@ -190,7 +207,7 @@ $timeSaver    = date('H:i', strtotime('+6 hours'));
 <link rel="stylesheet" href="<?= $rootDir ?>themes/order.css?v=<?= time() ?>">
 
 <style>
-    /* Khối chọn thời gian giao hàng giống mẫu */
+    /* Khối chọn thời gian giao hàng */
     .deliv-head {
         display: flex;
         justify-content: space-between;
@@ -320,6 +337,78 @@ $timeSaver    = date('H:i', strtotime('+6 hours'));
     }
     @media (max-width: 600px) {
         .schedule-grid { grid-template-columns: 1fr; }
+    }
+
+    /* === KHUNG THÔNG TIN GIAO HÀNG CÓ THỂ CHỈNH SỬA === */
+    .ship-card-head {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 6px;
+    }
+    .ship-card-head h2 {
+        margin: 0;
+    }
+    .ship-edit-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        font-size: 12px;
+        font-weight: 600;
+        color: #16834b;
+        background: #eaf5e7;
+        padding: 3px 9px;
+        border-radius: 999px;
+    }
+    .info-row-edit {
+        display: flex;
+        flex-direction: column;
+        gap: 5px;
+        padding: 10px 0;
+        border-bottom: 1px solid #f1f5f9;
+    }
+    .info-row-edit:last-child {
+        border-bottom: none;
+        padding-bottom: 0;
+    }
+    .info-row-edit label {
+        font-size: 12.5px;
+        color: #6b7280;
+        font-weight: 500;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+    .ship-input,
+    .ship-textarea {
+        width: 100%;
+        padding: 8px 11px;
+        border: 1px solid #d1d5db;
+        border-radius: 8px;
+        font-family: inherit;
+        font-size: 14px;
+        font-weight: 600;
+        color: #111827;
+        background: #f9fafb;
+        box-sizing: border-box;
+        transition: all 0.15s ease;
+    }
+    .ship-input:hover,
+    .ship-textarea:hover {
+        border-color: #9ca3af;
+        background: #fff;
+    }
+    .ship-input:focus,
+    .ship-textarea:focus {
+        outline: none;
+        border-color: #16834b;
+        background: #fff;
+        box-shadow: 0 0 0 3px rgba(22, 131, 75, 0.12);
+    }
+    .ship-textarea {
+        resize: vertical;
+        min-height: 62px;
+        line-height: 1.45;
     }
 </style>
 
@@ -493,24 +582,31 @@ $timeSaver    = date('H:i', strtotime('+6 hours'));
         <!-- CỘT PHẢI -->
         <aside class="order-side">
 
-            <!-- THÔNG TIN GIAO HÀNG -->
+            <!-- THÔNG TIN GIAO HÀNG (CHO PHÉP CHỈNH SỬA TRỰC TIẾP) -->
             <section class="card">
-                <h2>Thông tin giao hàng</h2>
-                <div class="info-row">
-                    <span>Người nhận</span>
-                    <strong><?= htmlspecialchars($fullname) ?></strong>
+                <div class="ship-card-head">
+                    <h2>Thông tin giao hàng</h2>
+                    <span class="ship-edit-badge">✎ Có thể sửa</span>
                 </div>
-                <div class="info-row">
-                    <span>Điện thoại</span>
-                    <strong><?= htmlspecialchars($phone) ?></strong>
+
+                <div class="info-row-edit">
+                    <label for="ship-fullname">Người nhận</label>
+                    <input type="text" id="ship-fullname" class="ship-input" value="<?= htmlspecialchars($fullname) ?>" placeholder="Nhập tên người nhận...">
                 </div>
+
+                <div class="info-row-edit">
+                    <label for="ship-phone">Điện thoại</label>
+                    <input type="tel" id="ship-phone" class="ship-input" value="<?= htmlspecialchars($phone) ?>" placeholder="Nhập số điện thoại...">
+                </div>
+
                 <div class="info-row">
                     <span>Thời gian nhận</span>
                     <strong id="summary-delivery-time" style="color:#16834b;">Hôm nay, <?= $timeStandard ?></strong>
                 </div>
-                <div class="info-row">
-                    <span>Địa chỉ</span>
-                    <strong>Thành phố Hồ Chí Minh, Việt Nam</strong>
+
+                <div class="info-row-edit">
+                    <label for="ship-address">Địa chỉ giao hàng</label>
+                    <textarea id="ship-address" class="ship-textarea" placeholder="Nhập số nhà, tên đường, phường/xã, quận/huyện..."><?= htmlspecialchars('Thành phố Hồ Chí Minh, Việt Nam') ?></textarea>
                 </div>
             </section>
 
@@ -621,6 +717,26 @@ function updateScheduleSummary() {
 }
 
 function xacNhanDatHang() {
+    const nguoiNhan = document.getElementById('ship-fullname').value.trim();
+    const sdt       = document.getElementById('ship-phone').value.trim();
+    const diaChi    = document.getElementById('ship-address').value.trim();
+
+    if (!nguoiNhan) {
+        alert('Vui lòng nhập tên người nhận!');
+        document.getElementById('ship-fullname').focus();
+        return;
+    }
+    if (!sdt) {
+        alert('Vui lòng nhập số điện thoại nhận hàng!');
+        document.getElementById('ship-phone').focus();
+        return;
+    }
+    if (!diaChi) {
+        alert('Vui lòng nhập địa chỉ giao hàng!');
+        document.getElementById('ship-address').focus();
+        return;
+    }
+
     fetch(window.location.href, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -629,7 +745,10 @@ function xacNhanDatHang() {
             delivery_mode: deliveryMode,
             delivery_tier: deliveryTier,
             schedule_date: document.getElementById('scheduleDate').value,
-            schedule_time: document.getElementById('scheduleTime').value
+            schedule_time: document.getElementById('scheduleTime').value,
+            nguoi_nhan: nguoiNhan,
+            sdt: sdt,
+            dia_chi: diaChi
         })
     })
     .then(res => res.json())

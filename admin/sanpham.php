@@ -13,17 +13,81 @@ function e($value) {
     return htmlspecialchars((string)$value, ENT_QUOTES, 'UTF-8');
 }
 
-// Phân trang 12 sản phẩm
+// Lấy danh mục nạp vào Dropdown & bộ lọc
+$categories = $conn->query("SELECT maloaisanpham, tenloaisanpham FROM loaisanpham ORDER BY maloaisanpham ASC")->fetch_all(MYSQLI_ASSOC);
+
+// Lấy các tham số lọc từ URL (nếu có)
+$filterStatus = trim($_GET['status'] ?? 'ALL');
+$filterCat    = isset($_GET['cat']) ? (int)$_GET['cat'] : 0;
+$searchQuery  = trim($_GET['q'] ?? '');
+
+// Đếm số lượng sản phẩm theo từng trạng thái trên toàn bộ CSDL
+$countSql = "
+    SELECT 
+        COUNT(*) AS total_all,
+        SUM(CASE WHEN Soluongton = 0 THEN 1 ELSE 0 END) AS total_out,
+        SUM(CASE WHEN Soluongton >= 10 AND Soluongton <= 35 THEN 1 ELSE 0 END) AS total_low,
+        SUM(CASE WHEN Soluongton > 0 AND (Soluongton < 10 OR Soluongton > 35) THEN 1 ELSE 0 END) AS total_in,
+        SUM(CASE WHEN an_hien = 0 THEN 1 ELSE 0 END) AS total_hidden
+    FROM sanpham
+";
+$countsRow = $conn->query($countSql)->fetch_assoc();
+$statusCounts = [
+    'ALL'       => (int)($countsRow['total_all'] ?? 0),
+    'con_hang'  => (int)($countsRow['total_in'] ?? 0),
+    'sap_het'   => (int)($countsRow['total_low'] ?? 0),
+    'het_hang'  => (int)($countsRow['total_out'] ?? 0),
+    'dang_an'   => (int)($countsRow['total_hidden'] ?? 0),
+];
+
+// Xây dựng điều kiện WHERE động để lọc chính xác trên toàn bộ CSDL
+$whereClauses = [];
+$params = [];
+$types = '';
+
+if ($filterStatus === 'het_hang') {
+    $whereClauses[] = "s.Soluongton = 0";
+} elseif ($filterStatus === 'sap_het') {
+    $whereClauses[] = "s.Soluongton >= 10 AND s.Soluongton <= 35";
+} elseif ($filterStatus === 'con_hang') {
+    $whereClauses[] = "s.Soluongton > 0 AND (s.Soluongton < 10 OR s.Soluongton > 35)";
+} elseif ($filterStatus === 'dang_an') {
+    $whereClauses[] = "s.an_hien = 0";
+}
+
+if ($filterCat > 0) {
+    $whereClauses[] = "s.maloaisanpham = ?";
+    $params[] = $filterCat;
+    $types .= 'i';
+}
+
+if ($searchQuery !== '') {
+    $whereClauses[] = "(s.TenSP LIKE ? OR l.tenloaisanpham LIKE ?)";
+    $likeParam = '%' . $searchQuery . '%';
+    $params[] = $likeParam;
+    $params[] = $likeParam;
+    $types .= 'ss';
+}
+
+$whereSql = !empty($whereClauses) ? ('WHERE ' . implode(' AND ', $whereClauses)) : '';
+
+// Phân trang 12 sản phẩm theo kết quả đã lọc
 $limit = 12; 
 $page = isset($_GET['page']) ? max(1, (int)$_GET['page']) : 1;
 $offset = ($page - 1) * $limit;
 
-$totalResult = $conn->query("SELECT COUNT(*) AS total FROM sanpham");
-$totalRows = $totalResult->fetch_assoc()['total'];
-$totalPages = ceil($totalRows / $limit);
-
-// Lấy danh mục nạp vào Dropdown
-$categories = $conn->query("SELECT maloaisanpham, tenloaisanpham FROM loaisanpham ORDER BY maloaisanpham ASC")->fetch_all(MYSQLI_ASSOC);
+$totalSql = "SELECT COUNT(*) AS total FROM sanpham s LEFT JOIN loaisanpham l ON s.maloaisanpham = l.maloaisanpham $whereSql";
+$stmtTotal = $conn->prepare($totalSql);
+if ($types !== '') {
+    $stmtTotal->bind_param($types, ...$params);
+}
+$stmtTotal->execute();
+$totalRows = (int)$stmtTotal->get_result()->fetch_assoc()['total'];
+$totalPages = max(1, (int)ceil($totalRows / $limit));
+if ($page > $totalPages) {
+    $page = $totalPages;
+    $offset = ($page - 1) * $limit;
+}
 
 $sql = "
     SELECT 
@@ -39,14 +103,34 @@ $sql = "
         COALESCE(l.tenloaisanpham, 'Chưa phân loại') AS TenLoai
     FROM sanpham s
     LEFT JOIN loaisanpham l ON s.maloaisanpham = l.maloaisanpham
+    $whereSql
     ORDER BY s.MaSP DESC
     LIMIT ? OFFSET ?
 ";
 
 $stmt = $conn->prepare($sql);
-$stmt->bind_param('ii', $limit, $offset);
+$queryParams = array_merge($params, [$limit, $offset]);
+$queryTypes = $types . 'ii';
+$stmt->bind_param($queryTypes, ...$queryParams);
 $stmt->execute();
 $products = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+
+// Hàm tạo URL giữ nguyên bộ lọc khi chuyển tab hoặc chuyển trang
+function buildFilterUrl($overrides = []) {
+    $base = [
+        'status' => $_GET['status'] ?? 'ALL',
+        'cat'    => $_GET['cat'] ?? 0,
+        'q'      => $_GET['q'] ?? '',
+        'page'   => 1,
+    ];
+    $merged = array_merge($base, $overrides);
+    if ($merged['status'] === 'ALL') unset($merged['status']);
+    if ((int)$merged['cat'] === 0) unset($merged['cat']);
+    if ($merged['q'] === '') unset($merged['q']);
+    if ((int)$merged['page'] <= 1) unset($merged['page']);
+    $qs = http_build_query($merged);
+    return 'sanpham.php' . ($qs !== '' ? '?' . $qs : '');
+}
 
 $msg = trim($_GET['msg'] ?? '');
 $err = trim($_GET['err'] ?? '');
@@ -60,9 +144,173 @@ $err = trim($_GET['err'] ?? '');
     <link rel="stylesheet" href="../themes/styleadmin.css?v=v10">
     <link rel="stylesheet" href="../themes/category-fix.css?v=v10">
     <style>
+        /* THANH CÔNG CỤ LỌC & TÌM KIẾM ĐỒNG BỘ */
+        .prod-toolbar {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: space-between;
+            align-items: center;
+            gap: 14px;
+            background: #fff;
+            padding: 14px 18px;
+            border-radius: 10px;
+            border: 1px solid #edf2f0;
+            margin-bottom: 16px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.02);
+        }
+
+        .status-filter-tabs {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            align-items: center;
+        }
+
+        .filter-tab {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 7px 13px;
+            border-radius: 20px;
+            border: 1px solid #e2e8f0;
+            background: #f8fafc;
+            color: #475569;
+            font-size: 13px;
+            font-weight: 600;
+            text-decoration: none;
+            cursor: pointer;
+            transition: all 0.15s ease;
+        }
+
+        .filter-tab:hover {
+            background: #eef6f0;
+            border-color: #b7dec3;
+            color: #1e3a29;
+        }
+
+        .filter-tab.active {
+            background: #16834b;
+            border-color: #16834b;
+            color: #ffffff;
+        }
+
+        .filter-tab .tab-count {
+            background: rgba(0, 0, 0, 0.08);
+            padding: 1px 7px;
+            border-radius: 12px;
+            font-size: 11.5px;
+            font-weight: 700;
+        }
+
+        .filter-tab.active .tab-count {
+            background: rgba(255, 255, 255, 0.22);
+            color: #ffffff;
+        }
+
+        .toolbar-right-controls {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .cat-filter-select {
+            padding: 9px 12px;
+            border: 1px solid #d1d5db;
+            border-radius: 8px;
+            font-size: 13.5px;
+            color: #111827;
+            background: #f9fafb;
+            outline: none;
+            cursor: pointer;
+            transition: all 0.15s ease;
+        }
+
+        .cat-filter-select:focus {
+            background: #ffffff;
+            border-color: #16834b;
+            box-shadow: 0 0 0 3px rgba(22, 131, 75, 0.12);
+        }
+
+        .search-prod-box {
+            position: relative;
+            min-width: 240px;
+        }
+
+        .search-prod-box .svg-search {
+            position: absolute;
+            left: 12px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: #64748b;
+            pointer-events: none;
+        }
+
+        .search-prod-input {
+            width: 100%;
+            padding: 9px 34px 9px 36px;
+            border: 1px solid #d1d5db;
+            border-radius: 8px;
+            font-size: 13.5px;
+            color: #111827;
+            background: #f9fafb;
+            outline: none;
+            transition: all 0.15s ease;
+            box-sizing: border-box;
+        }
+
+        .search-prod-input:focus {
+            background: #ffffff;
+            border-color: #16834b;
+            box-shadow: 0 0 0 3px rgba(22, 131, 75, 0.12);
+        }
+
+        .btn-clear-search {
+            position: absolute;
+            right: 8px;
+            top: 50%;
+            transform: translateY(-50%);
+            background: transparent;
+            border: none;
+            color: #9ca3af;
+            cursor: pointer;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            padding: 4px;
+            border-radius: 50%;
+            text-decoration: none;
+        }
+
+        .btn-clear-search:hover {
+            color: #374151;
+            background: #e5e7eb;
+        }
+
+        .btn-add-prod {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            background: #16834b;
+            color: #fff;
+            border: none;
+            border-radius: 20px;
+            font-size: 13.5px;
+            font-weight: 700;
+            padding: 9px 18px;
+            cursor: pointer;
+            transition: background 0.15s ease;
+        }
+
+        .btn-add-prod:hover {
+            background: #126b3d;
+        }
+
+        /* BẢNG SẢN PHẨM */
         .category-table { width:100%; border-collapse:collapse; font-size:14px; }
         .category-table th { padding:14px 16px; text-align:left; background:#eaf4ed; color:#1e3a29; font-weight:700; white-space:nowrap; }
         .category-table td { padding:12px 16px; border-bottom:1px solid #edf2f0; vertical-align:middle; }
+        .category-table tbody tr.prod-row:hover { background: #f8fbf9; }
         
         .category-table th:nth-child(5), .category-table th:nth-child(6), .category-table th:nth-child(7),
         .category-table td:nth-child(5), .category-table td:nth-child(6), .category-table td:nth-child(7) { text-align: center; }
@@ -119,17 +367,65 @@ $err = trim($_GET['err'] ?? '');
 
         <div class="content">
             <section class="panel active">
-                <div class="toolbar" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
-                    <div class="toolbar-left">
-                        <div class="search-box">
-                            <span>🔍</span>
-                            <input id="prod-search" type="text" placeholder="Tìm kiếm sản phẩm...">
-                        </div>
+                <!-- THANH LỌC TRẠNG THÁI, DANH MỤC & TÌM KIẾM -->
+                <div class="prod-toolbar">
+                    <div class="status-filter-tabs">
+                        <a href="<?= e(buildFilterUrl(['status' => 'ALL'])) ?>" class="filter-tab <?= $filterStatus === 'ALL' ? 'active' : '' ?>">
+                            Tất cả <span class="tab-count"><?= $statusCounts['ALL'] ?></span>
+                        </a>
+                        <a href="<?= e(buildFilterUrl(['status' => 'con_hang'])) ?>" class="filter-tab <?= $filterStatus === 'con_hang' ? 'active' : '' ?>">
+                            Còn hàng <span class="tab-count"><?= $statusCounts['con_hang'] ?></span>
+                        </a>
+                        <a href="<?= e(buildFilterUrl(['status' => 'sap_het'])) ?>" class="filter-tab <?= $filterStatus === 'sap_het' ? 'active' : '' ?>">
+                            Sắp hết <span class="tab-count"><?= $statusCounts['sap_het'] ?></span>
+                        </a>
+                        <a href="<?= e(buildFilterUrl(['status' => 'het_hang'])) ?>" class="filter-tab <?= $filterStatus === 'het_hang' ? 'active' : '' ?>">
+                            Hết hàng <span class="tab-count"><?= $statusCounts['het_hang'] ?></span>
+                        </a>
+                        <a href="<?= e(buildFilterUrl(['status' => 'dang_an'])) ?>" class="filter-tab <?= $filterStatus === 'dang_an' ? 'active' : '' ?>">
+                            Đang ẩn <span class="tab-count"><?= $statusCounts['dang_an'] ?></span>
+                        </a>
                     </div>
-                    <!-- Nút Thêm sản phẩm -->
-                    <button class="btn btn-primary" id="btnOpenAddModal" type="button" style="border-radius:20px; font-weight:700; padding:9px 20px;">
-                        + Thêm sản phẩm
-                    </button>
+
+                    <div class="toolbar-right-controls">
+                        <form method="get" action="sanpham.php" id="prodFilterForm" style="display:flex; flex-wrap:wrap; align-items:center; gap:10px; margin:0;">
+                            <?php if ($filterStatus !== 'ALL'): ?>
+                                <input type="hidden" name="status" value="<?= e($filterStatus) ?>">
+                            <?php endif; ?>
+
+                            <select name="cat" id="catFilterSelect" class="cat-filter-select" onchange="this.form.submit()">
+                                <option value="0">Tất cả danh mục</option>
+                                <?php foreach ($categories as $cat): ?>
+                                    <option value="<?= (int)$cat['maloaisanpham'] ?>" <?= $filterCat === (int)$cat['maloaisanpham'] ? 'selected' : '' ?>>
+                                        <?= e($cat['tenloaisanpham']) ?>
+                                    </option>
+                                <?php endforeach; ?>
+                            </select>
+
+                            <div class="search-prod-box">
+                                <svg class="svg-search" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <circle cx="11" cy="11" r="8"></circle>
+                                    <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                                </svg>
+                                <input id="prod-search" name="q" type="text" class="search-prod-input" value="<?= e($searchQuery) ?>" placeholder="Tìm tên sản phẩm...">
+                                <a href="<?= e(buildFilterUrl(['q' => ''])) ?>" id="clearProdSearchBtn" class="btn-clear-search" style="<?= $searchQuery !== '' ? 'display:inline-flex;' : '' ?>" title="Xóa tìm kiếm">
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                                        <line x1="18" y1="6" x2="6" y2="18"></line>
+                                        <line x1="6" y1="6" x2="18" y2="18"></line>
+                                    </svg>
+                                </a>
+                            </div>
+                        </form>
+
+                        <!-- Nút Thêm sản phẩm -->
+                        <button class="btn-add-prod" id="btnOpenAddModal" type="button">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+                                <line x1="12" y1="5" x2="12" y2="19"></line>
+                                <line x1="5" y1="12" x2="19" y2="12"></line>
+                            </svg>
+                            Thêm sản phẩm
+                        </button>
+                    </div>
                 </div>
 
                 <div class="table-card">
@@ -146,6 +442,17 @@ $err = trim($_GET['err'] ?? '');
                             </tr>
                         </thead>
                         <tbody id="prod-tbody">
+                        <?php if (empty($products)): ?>
+                            <tr>
+                                <td colspan="7" style="text-align:center; padding: 32px 16px; color:#6b7280;">
+                                    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" style="display:block; margin: 0 auto 8px;">
+                                        <circle cx="11" cy="11" r="8"></circle>
+                                        <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                                    </svg>
+                                    Không tìm thấy sản phẩm nào phù hợp với bộ lọc hiện tại.
+                                </td>
+                            </tr>
+                        <?php else: ?>
                         <?php foreach ($products as $p): 
                             $imgFileName = !empty($p['Hinhanh']) ? $p['Hinhanh'] : 'default.jpg';
                             $imgSrc = '../themes/image/' . $imgFileName; 
@@ -165,7 +472,7 @@ $err = trim($_GET['err'] ?? '');
                                 $sttClass = 'badge-green';
                             }
                         ?>
-                            <tr style="<?= $anHien === 0 ? 'opacity: 0.55; background: #fafafa;' : '' ?>">
+                            <tr class="prod-row" style="<?= $anHien === 0 ? 'opacity: 0.55; background: #fafafa;' : '' ?>">
                                 <td>
                                     <img src="<?= e($imgSrc) ?>" alt="<?= e($p['TenSP']) ?>" class="prod-img" onerror="this.src='../themes/images/<?= e($imgFileName) ?>'; this.onerror=null;">
                                 </td>
@@ -224,6 +531,7 @@ $err = trim($_GET['err'] ?? '');
                                 </td>
                             </tr>
                         <?php endforeach; ?>
+                        <?php endif; ?>
                         </tbody>
                     </table>
                 </div>
@@ -234,11 +542,11 @@ $err = trim($_GET['err'] ?? '');
                         Hiển thị <strong><?= count($products) ?></strong> / <strong><?= $totalRows ?></strong> sản phẩm
                     </div>
                     <div class="pagination">
-                        <a href="sanpham.php?page=<?= $page - 1 ?>" class="page-link <?= $page <= 1 ? 'disabled' : '' ?>">« Trước</a>
+                        <a href="<?= e(buildFilterUrl(['page' => $page - 1])) ?>" class="page-link <?= $page <= 1 ? 'disabled' : '' ?>">« Trước</a>
                         <?php for ($i = 1; $i <= $totalPages; $i++): ?>
-                            <a href="sanpham.php?page=<?= $i ?>" class="page-link <?= $i === $page ? 'active' : '' ?>"><?= $i ?></a>
+                            <a href="<?= e(buildFilterUrl(['page' => $i])) ?>" class="page-link <?= $i === $page ? 'active' : '' ?>"><?= $i ?></a>
                         <?php endfor; ?>
-                        <a href="sanpham.php?page=<?= $page + 1 ?>" class="page-link <?= $page >= $totalPages ? 'disabled' : '' ?>">Sau »</a>
+                        <a href="<?= e(buildFilterUrl(['page' => $page + 1])) ?>" class="page-link <?= $page >= $totalPages ? 'disabled' : '' ?>">Sau »</a>
                     </div>
                 </div>
                 <?php endif; ?>
@@ -396,5 +704,27 @@ $err = trim($_GET['err'] ?? '');
 </div>
 
 <script src="../js/sanpham.js?v=v10"></script>
+<script>
+// Tự động submit tìm kiếm sau khi ngừng gõ 450ms để lọc trên toàn bộ CSDL
+(function() {
+    const searchInput = document.getElementById('prod-search');
+    const filterForm = document.getElementById('prodFilterForm');
+    if (!searchInput || !filterForm) return;
+
+    if (searchInput.value.length > 0) {
+        searchInput.focus();
+        const len = searchInput.value.length;
+        searchInput.setSelectionRange(len, len);
+    }
+
+    let debounceTimer;
+    searchInput.addEventListener('input', function() {
+        clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(() => {
+            filterForm.submit();
+        }, 450);
+    });
+})();
+</script>
 </body>
 </html>
